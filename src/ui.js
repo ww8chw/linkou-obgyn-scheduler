@@ -80,7 +80,6 @@ function el(tag, cls, text) {
 
 function renderTaipei(tp) {
   const wrap = el('div', 'result-group');
-  wrap.appendChild(el('h3', null, '台北輪訓'));
   // R1-3：只 T1；R4 / F1：T1 + T2。
   const rows = [
     ['R1-3', tp.r1to3, false],
