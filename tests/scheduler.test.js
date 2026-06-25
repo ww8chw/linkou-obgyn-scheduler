@@ -208,6 +208,48 @@ test('applyLeaveAdjustment：吸收後超過8則往上推', () => {
   assert.equal(out.pushedUp.weekday, 2);
 });
 
+// ---------- spec §4.4c/§5.1: 特休釋出平日納入職級容量，不靜默遺失 ----------
+test('groupCapacity(特休)：fillShift 不分配超過 count*6-freed 的平日，溢出推往下一職級', () => {
+  // A: count 2, bigLeave 1 → freed=2 → 平日真實容量 = 2*6-2 = 10、總容量 = 2*8-2 = 14
+  // 需求 16 平 0 假，遠超 A 的 10 → A 只吃 10，剩 6 溢出至下一職級 B
+  const pool = createPersonPool({
+    A: { count: 2, bigLeave: 1, smallLeave: 0 },
+    B: { count: 2, bigLeave: 0, smallLeave: 0 },
+  });
+  const left = fillShift(pool, ['A', 'B'], 'L1', { weekday: 16, weekend: 0 });
+  assert.equal(pool.A.weekday, 10, 'A 不可超過 count*6-freed=10');
+  // 溢出確實被推到下一職級 B（往上一職級推）
+  assert.equal(pool.B.byShift.L1.weekday, 6, '溢出 6 平日推往下一職級 B');
+  assert.equal(left.weekday, 0, '無班數靜默遺失');
+  assert.equal(left.weekend, 0);
+
+  // 不變量：A 的每人拆解（normal*normalCount + big*bigLeave + small*smallLeave）= 群組配額
+  const adj = applyLeaveAdjustment(pool.A);
+  const sum =
+    adj.normalAdjusted.weekday * adj.normalCount +
+    adj.big.weekday * adj.bigLeave +
+    adj.small.weekday * adj.smallLeave;
+  assert.equal(sum, pool.A.weekday, '每人平日拆解必須加總回群組配額');
+  assert.equal(adj.pushedUp.weekday, 0, '容量修正後不應再有殘留溢出');
+});
+
+test('原失敗案例 {count:2,weekday:16,bigLeave:1}：容量受限後不再靜默遺失', () => {
+  // 直接以群組驗證：先前 16 被全配後拆解只剩 14，2 平日靜默消失。
+  // 修正後容量上限為 14（總）/10（平），fillShift 只會配到 10 平。
+  const pool = createPersonPool({ G: { count: 2, bigLeave: 1, smallLeave: 0 } });
+  const left = fillShift(pool, ['G'], 'L1', { weekday: 16, weekend: 0 });
+  const adj = applyLeaveAdjustment(pool.G);
+  const sum =
+    adj.normalAdjusted.weekday * adj.normalCount +
+    adj.big.weekday * adj.bigLeave +
+    adj.small.weekday * adj.smallLeave;
+  // 配給此群組的平日必須完全等於每人拆解之和（無遺失）
+  assert.equal(sum, pool.G.weekday, '群組配額與每人拆解一致，無靜默遺失');
+  // 無法吃下的部分以 leftover 回傳（非靜默吞掉）
+  assert.equal(pool.G.weekday + left.weekday, 16, 'leftover + 已配 = 原需求');
+  assert.ok(left.weekday > 0, '吃不下的平日以 leftover 顯性回報');
+});
+
 // ---------- Task 8: formatResult ----------
 test('formatResult：輸出含台北/林口每人與特休平假', () => {
   const result = calculateSchedule({

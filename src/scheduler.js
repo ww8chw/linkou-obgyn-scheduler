@@ -73,11 +73,15 @@ function effectiveCount(g, opts) {
 }
 
 // 群組剩餘可吃容量（以有效人數 × 上限估算）。
+// 特休（大特休 -2 平、小特休 -1 平）會降低群組「真實」平日/總容量，
+// 故從 wkCap/totalCap 扣除 freed，使 fillShift 在特休重的群組提早停止，
+// 剩餘自然流向下一職級（spec §4.4c「往上一個職級順位推」）。假日不受特休影響。
 function groupCapacity(g, effCount) {
   const c = effCount == null ? g.count : effCount;
-  const wkCap = c * MAX_WEEKDAY - g.weekday; // 平日寬鬆到 6
+  const freed = (g.bigLeave || 0) * 2 + (g.smallLeave || 0) * 1;
+  const wkCap = c * MAX_WEEKDAY - g.weekday - freed; // 平日寬鬆到 6，再扣特休釋出
   const wendCap = c * MAX_WEEKEND - g.weekend;
-  const totalCap = c * MAX_TOTAL - (g.weekday + g.weekend);
+  const totalCap = c * MAX_TOTAL - (g.weekday + g.weekend) - freed;
   return {
     wkCap: Math.max(0, wkCap),
     wendCap: Math.max(0, wendCap),
@@ -204,6 +208,14 @@ function validateLimits(linko, warnings) {
   for (const k of ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
     const g = linko[k];
     if (g.count === 0) continue;
+    // 安全網（spec §4.4c/§5.1）：特休釋出的平日吸收後若仍超過 8 班上限，
+    // 必須往上一職級調整，絕不靜默遺失班數。容量已修正後此值通常為 0。
+    const adj = applyLeaveAdjustment(g);
+    if (adj.pushedUp.weekday > 0) {
+      warnings.push(
+        `${k.toUpperCase()} 特休調整後仍有 ${adj.pushedUp.weekday} 個平日班超出 8 班上限，需人工往上一職級調整`
+      );
+    }
     const totEach = (g.weekday + g.weekend) / g.count;
     const wendEach = g.weekend / g.count;
     if (totEach > MAX_TOTAL + 1e-9) {
