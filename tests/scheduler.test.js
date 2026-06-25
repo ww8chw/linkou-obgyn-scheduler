@@ -208,6 +208,20 @@ test('applyLeaveAdjustment：吸收後超過8則往上推', () => {
   assert.equal(out.pushedUp.weekday, 2);
 });
 
+test('applyLeaveAdjustment：週末不整除時 wendEach 取 floor，不超過真實均分額', () => {
+  // 3人共值若干平日、8假；8 不被 3 整除 → floor(8/3)=2（真實均分 8/3≈2.667）
+  const g = { count: 3, weekday: 9, weekend: 8, bigLeave: 0, smallLeave: 0 };
+  const out = applyLeaveAdjustment(g);
+  const trueShare = g.weekend / g.count; // 2.666...
+  assert.equal(out.normal.weekend, 2); // floor
+  assert.equal(out.big.weekend, 2); // 假日不因特休改變，同為 floor
+  assert.equal(out.small.weekend, 2);
+  // 任何 per-person 週末值都不可超過真實均分額
+  assert.ok(out.normal.weekend <= trueShare + 1e-9);
+  assert.ok(out.big.weekend <= trueShare + 1e-9);
+  assert.ok(out.small.weekend <= trueShare + 1e-9);
+});
+
 // ---------- spec §4.4c/§5.1: 特休釋出平日納入職級容量，不靜默遺失 ----------
 test('groupCapacity(特休)：fillShift 不分配超過 count*6-freed 的平日，溢出推往下一職級', () => {
   // A: count 2, bigLeave 1 → freed=2 → 平日真實容量 = 2*6-2 = 10、總容量 = 2*8-2 = 14

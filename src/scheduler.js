@@ -8,6 +8,7 @@
 export const MAX_TOTAL = 8; // 每人總班數硬上限
 export const MAX_WEEKEND = 3; // 每人假日硬上限
 export const MAX_WEEKDAY = 6; // 平日軟上限（容許 6平2假）
+const EPS = 1e-9; // 浮點比較容差
 
 const D = (v) => (v == null ? 0 : Number(v));
 
@@ -131,7 +132,9 @@ export function fillShift(pool, order, shift, demand, opts = {}) {
 export function applyLeaveAdjustment(g) {
   const { count, weekday, weekend, bigLeave = 0, smallLeave = 0 } = g;
   const normalCount = count - bigLeave - smallLeave;
-  const wendEach = count > 0 ? Math.round(weekend / count) : 0;
+  // 與平日 baseWk 一致：per-person 週末取 floor，保證 count * wendEach 不超過真實總額，
+  // 餘數 (weekend % count) 由排班者手動分配給部分人，本工具只報均分的基準值。
+  const wendEach = count > 0 ? Math.floor(weekend / count) : 0;
   const baseWk = count > 0 ? Math.floor(weekday / count) : 0;
   const big = { weekday: Math.max(0, baseWk - 2), weekend: wendEach };
   const small = { weekday: Math.max(0, baseWk - 1), weekend: wendEach };
@@ -174,7 +177,7 @@ function fmtGroup(g) {
   return out;
 }
 
-function formatResult(linko, taipei, n, warnings) {
+function formatResult(linko, taipei, warnings) {
   const L = {};
   for (const k of ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
     L[k] = fmtGroup(linko[k]);
@@ -199,7 +202,7 @@ function validateLimits(linko, warnings) {
     const g = linko[k];
     if (g.count > 0) {
       const each = (g.weekday + g.weekend) / g.count;
-      if (each < min - 1e-9) {
+      if (each < min - EPS) {
         anyFbelow = true;
         warnings.push(`${k.toUpperCase()} 每人約 ${each.toFixed(1)} 班，低於最低 ${min} 班`);
       }
@@ -218,13 +221,13 @@ function validateLimits(linko, warnings) {
     }
     const totEach = (g.weekday + g.weekend) / g.count;
     const wendEach = g.weekend / g.count;
-    if (totEach > MAX_TOTAL + 1e-9) {
+    if (totEach > MAX_TOTAL + EPS) {
       warnings.push(`${k.toUpperCase()} 每人約 ${totEach.toFixed(1)} 班，超過 8 班上限`);
     }
-    if (wendEach > MAX_WEEKEND + 1e-9) {
+    if (wendEach > MAX_WEEKEND + EPS) {
       warnings.push(`${k.toUpperCase()} 每人約 ${wendEach.toFixed(1)} 假日班，超過 3 假上限`);
     }
-    if (!anyFbelow && ['r1', 'r2', 'r3', 'r4'].includes(k) && totEach < MAX_TOTAL - 1e-9) {
+    if (!anyFbelow && ['r1', 'r2', 'r3', 'r4'].includes(k) && totEach < MAX_TOTAL - EPS) {
       warnings.push(
         `${k.toUpperCase()} 每人約 ${totEach.toFixed(1)} 班，低於 8 班（無 F 級缺額時 R 級不應低於 8）`
       );
@@ -239,7 +242,7 @@ function validateLimits(linko, warnings) {
     if (lo.count === 0 || hi.count === 0) continue;
     const loW = lo.weekend / lo.count;
     const hiW = hi.weekend / hi.count;
-    if (hiW - loW > 1 + 1e-9) {
+    if (hiW - loW > 1 + EPS) {
       warnings.push(
         `假日單調性：${ranks[i + 1].toUpperCase()} 每人 ${hiW.toFixed(1)} 假，高於低職級 ${ranks[i].toUpperCase()} ${loW.toFixed(1)} 假，請人工微調`
       );
@@ -307,5 +310,5 @@ export function calculateSchedule(raw) {
   leftover('LR', fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'LR', demands.LR));
 
   validateLimits(linko, warnings);
-  return formatResult(linko, taipei, n, warnings);
+  return formatResult(linko, taipei, warnings);
 }
