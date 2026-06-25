@@ -1,0 +1,9 @@
+{
+  "name": "linkou-ob-schedule",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "林口長庚婦產科住院醫師排班計算器",
+  "scripts": {
+    "test": "node --test"
+  }
+}
