@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>林口長庚婦產科住院醫師排班計算器</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --border: #d4dae0;
+      --accent: #1f6feb;
+      --text: #1a1f25;
+      --muted: #6b7682;
+      --warn-bg: #fdecea;
+      --warn-border: #f5a3a3;
+      --warn-text: #b32020;
+      --ok: #1a7f37;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      font-size: 16px;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 16px; }
+    fieldset {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 0 0 14px;
+      padding: 12px 14px 14px;
+    }
+    legend {
+      font-weight: 600;
+      padding: 0 6px;
+      font-size: 1rem;
+    }
+    .note {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin: 4px 0 10px;
+    }
+    label { display: block; }
+    .field {
+      display: inline-flex;
+      flex-direction: column;
+      margin: 0 10px 8px 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .field span { margin-bottom: 3px; }
+    input[type="number"], select {
+      font-size: 1rem;
+      padding: 7px 8px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--text);
+      width: 90px;
+    }
+    select { width: 110px; }
+    input[type="number"] { width: 74px; }
+    .rank-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .rank-row:last-child { border-bottom: none; }
+    .rank-name {
+      font-weight: 700;
+      width: 42px;
+      flex: 0 0 42px;
+      color: var(--accent);
+      align-self: center;
+    }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: var(--text);
+      margin: 6px 0 4px;
+    }
+    .check input { width: auto; }
+    #calc {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 4px 0 18px;
+    }
+    #calc:active { opacity: 0.85; }
+    #warnings {
+      margin: 0 0 14px;
+    }
+    .warn-box {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-weight: 600;
+    }
+    .warn-box ul { margin: 6px 0 0; padding-left: 20px; }
+    .warn-box li { margin: 3px 0; font-weight: 500; }
+    .ok-box { color: var(--ok); font-size: 0.9rem; padding: 4px 2px; }
+    .result-group {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 0 0 10px;
+    }
+    .result-group h3 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+    }
+    .result-group h3 .cnt { color: var(--muted); font-weight: 500; font-size: 0.85rem; }
+    .rline { margin: 3px 0; font-size: 0.95rem; }
+    .rline .lbl { color: var(--muted); }
+    .perperson { font-weight: 700; color: var(--accent); }
+    .leave { color: #8a5a00; }
+    .section-title { font-weight: 700; margin: 14px 0 8px; font-size: 1.05rem; }
+    @media (max-width: 480px) {
+      input[type="number"] { width: 64px; }
+      .field { margin-right: 8px; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>林口長庚婦產科住院醫師排班計算器</h1>
+  <p class="sub">每月計算各班別、各職級、每人應值幾平幾假（只算數量，不排逐日班表）。</p>
+
+  <fieldset>
+    <legend>月份 / 天數</legend>
+    <p class="note">選月份自動帶入 2026 台灣官方假日，可手動修改。</p>
+    <label class="field" style="display:inline-flex">
+      <span>月份</span>
+      <select id="month">
+        <option value="1">1 月</option>
+        <option value="2">2 月</option>
+        <option value="3">3 月</option>
+        <option value="4">4 月</option>
+        <option value="5">5 月</option>
+        <option value="6">6 月</option>
+        <option value="7">7 月</option>
+        <option value="8">8 月</option>
+        <option value="9">9 月</option>
+        <option value="10">10 月</option>
+        <option value="11">11 月</option>
+        <option value="12">12 月</option>
+      </select>
+    </label>
+    <label class="field"><span>平日班天數</span><input type="number" id="weekday" min="0"></label>
+    <label class="field"><span>假日班天數</span><input type="number" id="weekend" min="0"></label>
+    <label class="check"><input type="checkbox" id="lastDayIsWeekend"> 月底最後一天是假日</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>台北輪訓人數</legend>
+    <p class="note">台北人員比照林口配額；照順位填，填不滿才往下給林口。</p>
+    <label class="field"><span>R1-R3（值 T1）</span><input type="number" id="t_r1to3" min="0" value="0"></label>
+    <label class="field"><span>R4（值 T1/T2）</span><input type="number" id="t_r4" min="0" value="0"></label>
+    <label class="field"><span>F1（值 T1/T2）</span><input type="number" id="t_f1" min="0" value="0"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>林口各職級（扣除產房班後）</legend>
+
+    <div class="rank-row">
+      <div class="rank-name">Y2</div>
+      <label class="field"><span>人數</span><input type="number" id="y2_count" min="0" value="0"></label>
+      <label class="field"><span>可月底最後一天值班人數</span><input type="number" id="y2_last" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R1</div>
+      <label class="field"><span>人數</span><input type="number" id="r1_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r1_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r1_small" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R2</div>
+      <label class="field"><span>人數</span><input type="number" id="r2_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r2_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r2_small" min="0" value="0"></label>
+      <label class="field"><span>基隆籍</span><input type="number" id="r2_keelung" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R3</div>
+      <label class="field"><span>人數</span><input type="number" id="r3_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r3_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r3_small" min="0" value="0"></label>
+      <label class="field"><span>基隆籍</span><input type="number" id="r3_keelung" min="0" value="0"></label>
+      <label class="field"><span>可值總值班人數</span><input type="number" id="r3_lppl" min="0" value="0"></label>
+      <label class="field"><span>共可值總值班班數</span><input type="number" id="r3_lcap" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R4</div>
+      <label class="field"><span>人數</span><input type="number" id="r4_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r4_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r4_small" min="0" value="0"></label>
+      <label class="field"><span>基隆籍</span><input type="number" id="r4_keelung" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">F1</div>
+      <label class="field"><span>人數</span><input type="number" id="f1_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="f1_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="f1_small" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">F2</div>
+      <label class="field"><span>人數</span><input type="number" id="f2_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="f2_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="f2_small" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">F3</div>
+      <label class="field"><span>人數</span><input type="number" id="f3_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="f3_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="f3_small" min="0" value="0"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>外訓扣除後剩餘需求</legend>
+    <p class="note">排班者自行先扣外訓。PGY1 月底最後一天不能值的病房班洞、與扣除童綜合外訓後的 L5，請填這裡。</p>
+    <label class="field"><span>病房班 平日</span><input type="number" id="ward_wk" min="0" value="0"></label>
+    <label class="field"><span>病房班 假日</span><input type="number" id="ward_wend" min="0" value="0"></label>
+    <label class="field"><span>L5 平日</span><input type="number" id="l5_wk" min="0" value="0"></label>
+    <label class="field"><span>L5 假日</span><input type="number" id="l5_wend" min="0" value="0"></label>
+  </fieldset>
+
+  <button id="calc">計算</button>
+
+  <div id="warnings"></div>
+  <div id="result"></div>
+</div>
+
+<script>
+// ===== holidays2026.js =====
+// 2026 行政院人事行政總處公告。HOLIDAYS_2026: 落在平日(週一~週五)卻放假的日期。
+// 2026 已取消補班制度，故 MAKEUPS_2026 為空。
+//
+// 備註：以下國定假日落在週六/週日，已由星期判斷涵蓋，不需列入 HOLIDAYS_2026：
+//   2026-02-14 (情人節非國定), 2026-02-15 (春節前夕 Sun), 2026-04-04 (清明節 Sat),
+//   2026-04-05 (清明節 Sun), 2026-09-26 (中秋 Sat), 2026-10-10 (國慶日 Sat),
+//   2026-10-25 (台灣光復節 Sun)
+const HOLIDAYS_2026 = [
+  '2026-01-01', // 元旦 (四)
+  '2026-02-16', // 除夕 (一)
+  '2026-02-17', // 春節 (二)
+  '2026-02-18', // 春節 (三)
+  '2026-02-19', // 春節 (四)
+  '2026-02-20', // 春節補假 (五)
+  '2026-02-27', // 和平紀念日補假 (五)
+  '2026-04-03', // 兒童節補假 (五)
+  '2026-04-06', // 清明節補假 (一)
+  '2026-05-01', // 勞動節 (五)
+  '2026-06-19', // 端午節 (五)
+  '2026-09-25', // 中秋節補假 (五)
+  '2026-09-28', // 教師節 (一)
+  '2026-10-09', // 國慶日補假 (五)
+  '2026-10-26', // 台灣光復節補假 (一)
+  '2026-12-25', // 行憲紀念日 (五)
+];
+
+// 2026 已取消補班制度
+const MAKEUPS_2026 = [];
+
+/**
+ * 計算指定年月的工作日與非工作日數量。
+ *
+ * @param {number} year  西元年
+ * @param {number} month 月份 (1–12)
+ * @returns {{ weekday: number, weekend: number, lastDayIsWeekend: boolean }}
+ *   weekday: 工作日數（週一~週五 且非假日）
+ *   weekend: 非工作日數（週六/日 或 假日）
+ *   lastDayIsWeekend: 該月最後一天是否為非工作日
+ */
+function getMonthDays(year, month) {
+  const holidaySet = new Set(HOLIDAYS_2026);
+  const makeupSet = new Set(MAKEUPS_2026);
+  const daysInMonth = new Date(year, month, 0).getDate();
+  let weekday = 0, weekend = 0;
+  let lastDayIsWeekend = false;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month - 1, d);
+    const iso = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const dow = date.getDay();
+    let isHoliday = (dow === 0 || dow === 6);
+    if (makeupSet.has(iso)) isHoliday = false; // 補班日強制為工作日
+    if (holidaySet.has(iso)) isHoliday = true;  // 假日覆蓋補班（2026 無此情形）
+    if (isHoliday) weekend++; else weekday++;
+    if (d === daysInMonth) lastDayIsWeekend = isHoliday;
+  }
+  return { weekday, weekend, lastDayIsWeekend };
+}
+
+// ===== scheduler.js =====
+// 林口長庚婦產科住院醫師排班「數量」計算核心。
+// 只計算各班別/各職級/每人應值幾平幾假，不產生逐日班表。
+//
+// 硬性上限（絕對不破）：每人 ≤ 8 班、≤ 3 假。
+// 平日軟上限 6（允許 5平3假 與 6平2假 兩種型態）。
+// 特休只減平日、不減假日。
+
+const MAX_TOTAL = 8; // 每人總班數硬上限
+const MAX_WEEKEND = 3; // 每人假日硬上限
+const MAX_WEEKDAY = 6; // 平日軟上限（容許 6平2假）
+const EPS = 1e-9; // 浮點比較容差
+
+const D = (v) => (v == null ? 0 : Number(v));
+
+// ---------- Task 2: normalizeInput ----------
+function normalizeInput(raw) {
+  const lvl = (o = {}) => ({ ...o, count: D(o.count) });
+  const m = raw.month || {};
+  const t = raw.taipei || {};
+  const r = raw.remaining || {};
+  const ward = r.ward || {};
+  const l5 = r.l5 || {};
+  return {
+    month: {
+      weekday: D(m.weekday),
+      weekend: D(m.weekend),
+      lastDayIsWeekend: !!m.lastDayIsWeekend,
+    },
+    taipei: { r1to3: D(t.r1to3), r4: D(t.r4), f1: D(t.f1) },
+    linko: Object.fromEntries(
+      Object.entries(raw.linko || {}).map(([k, v]) => [k, lvl(v)])
+    ),
+    remaining: {
+      ward: { weekday: D(ward.weekday), weekend: D(ward.weekend) },
+      l5: { weekday: D(l5.weekday), weekend: D(l5.weekend) },
+    },
+  };
+}
+
+// ---------- Task 3: buildDemands ----------
+function buildDemands(n) {
+  const day = { weekday: n.month.weekday, weekend: n.month.weekend };
+  return {
+    ward: { ...n.remaining.ward },
+    L5: { ...n.remaining.l5 },
+    L1: { ...day },
+    L: { ...day },
+    T1: { ...day },
+    T2: { ...day },
+    LR: { ...day },
+  };
+}
+
+// ---------- Task 4 / 6: allocation engine ----------
+function createPersonPool(levels) {
+  const pool = {};
+  for (const [name, lv] of Object.entries(levels)) {
+    pool[name] = {
+      count: lv.count,
+      weekday: 0,
+      weekend: 0,
+      bigLeave: lv.bigLeave || 0,
+      smallLeave: lv.smallLeave || 0,
+      keelung: lv.keelung || 0,
+      byShift: {}, // {L1:{weekday,weekend},...}
+    };
+  }
+  return pool;
+}
+
+// T1/T2 時，基隆籍不可值班 → 有效人數扣除基隆籍。
+function effectiveCount(g, opts) {
+  return opts.excludeKeelung ? Math.max(0, g.count - (g.keelung || 0)) : g.count;
+}
+
+// 群組剩餘可吃容量（以有效人數 × 上限估算）。
+// 特休（大特休 -2 平、小特休 -1 平）會降低群組「真實」平日/總容量，
+// 故從 wkCap/totalCap 扣除 freed，使 fillShift 在特休重的群組提早停止，
+// 剩餘自然流向下一職級（spec §4.4c「往上一個職級順位推」）。假日不受特休影響。
+function groupCapacity(g, effCount) {
+  const c = effCount == null ? g.count : effCount;
+  const freed = (g.bigLeave || 0) * 2 + (g.smallLeave || 0) * 1;
+  const wkCap = c * MAX_WEEKDAY - g.weekday - freed; // 平日寬鬆到 6，再扣特休釋出
+  const wendCap = c * MAX_WEEKEND - g.weekend;
+  const totalCap = c * MAX_TOTAL - (g.weekday + g.weekend) - freed;
+  return {
+    wkCap: Math.max(0, wkCap),
+    wendCap: Math.max(0, wendCap),
+    totalCap: Math.max(0, totalCap),
+  };
+}
+
+function addToGroup(g, shift, wk, wend) {
+  g.weekday += wk;
+  g.weekend += wend;
+  g.byShift[shift] = g.byShift[shift] || { weekday: 0, weekend: 0 };
+  g.byShift[shift].weekday += wk;
+  g.byShift[shift].weekend += wend;
+}
+
+function fillShift(pool, order, shift, demand, opts = {}) {
+  let { weekday, weekend } = demand;
+  for (const name of order) {
+    const g = pool[name];
+    if (!g) continue;
+    const effCount = effectiveCount(g, opts);
+    if (effCount === 0) continue;
+    const cap = groupCapacity(g, effCount);
+    // 假日稀缺 → 先吃假日，再吃平日（但都不可超 totalCap）。
+    let takeWend = Math.min(weekend, cap.wendCap, cap.totalCap);
+    let takeWk = Math.min(weekday, cap.wkCap, cap.totalCap - takeWend);
+    // opts.shiftCap：此班別在此群組的總量上限（R3 的 L 班用）。
+    if (opts.shiftCap != null) {
+      const used = (g.byShift[shift]?.weekday || 0) + (g.byShift[shift]?.weekend || 0);
+      const allow = Math.max(0, opts.shiftCap - used);
+      if (takeWk + takeWend > allow) {
+        takeWend = Math.min(takeWend, allow); // 先保假日
+        takeWk = Math.min(takeWk, allow - takeWend);
+      }
+    }
+    if (takeWk + takeWend > 0) addToGroup(g, shift, takeWk, takeWend);
+    weekday -= takeWk;
+    weekend -= takeWend;
+    if (weekday <= 0 && weekend <= 0) break;
+  }
+  return { weekday: Math.max(0, weekday), weekend: Math.max(0, weekend) };
+}
+
+// ---------- Task 7: applyLeaveAdjustment ----------
+// 將群組總平/假班數依特休拆解為 normal / big / small 每人平假，並做同級吸收。
+// 特休只減平日，假日永遠均分不減。
+function applyLeaveAdjustment(g) {
+  const { count, weekday, weekend, bigLeave = 0, smallLeave = 0 } = g;
+  const normalCount = count - bigLeave - smallLeave;
+  // 與平日 baseWk 一致：per-person 週末取 floor，保證 count * wendEach 不超過真實總額，
+  // 餘數 (weekend % count) 由排班者手動分配給部分人，本工具只報均分的基準值。
+  const wendEach = count > 0 ? Math.floor(weekend / count) : 0;
+  const baseWk = count > 0 ? Math.floor(weekday / count) : 0;
+  const big = { weekday: Math.max(0, baseWk - 2), weekend: wendEach };
+  const small = { weekday: Math.max(0, baseWk - 1), weekend: wendEach };
+  const normal = { weekday: baseWk, weekend: wendEach };
+
+  // 特休者少值的平日總額（大特休 -2、小特休 -1）。
+  const freed = bigLeave * 2 + smallLeave * 1;
+  const normalAdjusted = { ...normal };
+  const pushedUp = { weekday: 0, weekend: 0 };
+
+  if (normalCount > 0) {
+    const addEach = Math.floor(freed / normalCount);
+    const newWk = baseWk + addEach;
+    const wkCeil = MAX_TOTAL - wendEach; // 在此假日數下的平日上限（受總 8 班約束）
+    if (newWk > wkCeil) {
+      normalAdjusted.weekday = wkCeil;
+      pushedUp.weekday = (newWk - wkCeil) * normalCount;
+    } else {
+      normalAdjusted.weekday = newWk;
+    }
+  } else if (freed > 0) {
+    // 全員特休 → 整批往上推。
+    pushedUp.weekday = freed;
+  }
+
+  return { normal, normalAdjusted, big, small, pushedUp, normalCount, bigLeave, smallLeave };
+}
+
+// ---------- Task 8: formatResult ----------
+function fmtGroup(g) {
+  const adj = applyLeaveAdjustment(g);
+  const out = {
+    count: g.count,
+    total: { weekday: g.weekday, weekend: g.weekend },
+    byShift: g.byShift,
+    perPerson: adj.normalAdjusted,
+  };
+  if (g.bigLeave > 0) out.bigLeavePerPerson = adj.big;
+  if (g.smallLeave > 0) out.smallLeavePerPerson = adj.small;
+  return out;
+}
+
+function formatResult(linko, taipei, warnings) {
+  const L = {};
+  for (const k of ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
+    L[k] = fmtGroup(linko[k]);
+  }
+  const Tp = {};
+  for (const [k, src] of [['r1to3', 'tr1to3'], ['r4', 'tr4'], ['f1', 'tf1']]) {
+    const g = taipei[src];
+    Tp[k] = {
+      count: g.count,
+      T1: g.byShift.T1 || { weekday: 0, weekend: 0 },
+      T2: g.byShift.T2 || { weekday: 0, weekend: 0 },
+    };
+  }
+  return { taipei: Tp, linko: L, warnings };
+}
+
+// ---------- Task 9: validateLimits ----------
+function validateLimits(linko, warnings) {
+  const minF = { f1: 3, f2: 2, f3: 1 };
+  let anyFbelow = false;
+  for (const [k, min] of Object.entries(minF)) {
+    const g = linko[k];
+    if (g.count > 0) {
+      const each = (g.weekday + g.weekend) / g.count;
+      if (each < min - EPS) {
+        anyFbelow = true;
+        warnings.push(`${k.toUpperCase()} 每人約 ${each.toFixed(1)} 班，低於最低 ${min} 班`);
+      }
+    }
+  }
+  for (const k of ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
+    const g = linko[k];
+    if (g.count === 0) continue;
+    // 安全網（spec §4.4c/§5.1）：特休釋出的平日吸收後若仍超過 8 班上限，
+    // 必須往上一職級調整，絕不靜默遺失班數。容量已修正後此值通常為 0。
+    const adj = applyLeaveAdjustment(g);
+    if (adj.pushedUp.weekday > 0) {
+      warnings.push(
+        `${k.toUpperCase()} 特休調整後仍有 ${adj.pushedUp.weekday} 個平日班超出 8 班上限，需人工往上一職級調整`
+      );
+    }
+    const totEach = (g.weekday + g.weekend) / g.count;
+    const wendEach = g.weekend / g.count;
+    if (totEach > MAX_TOTAL + EPS) {
+      warnings.push(`${k.toUpperCase()} 每人約 ${totEach.toFixed(1)} 班，超過 8 班上限`);
+    }
+    if (wendEach > MAX_WEEKEND + EPS) {
+      warnings.push(`${k.toUpperCase()} 每人約 ${wendEach.toFixed(1)} 假日班，超過 3 假上限`);
+    }
+    if (!anyFbelow && ['r1', 'r2', 'r3', 'r4'].includes(k) && totEach < MAX_TOTAL - EPS) {
+      warnings.push(
+        `${k.toUpperCase()} 每人約 ${totEach.toFixed(1)} 班，低於 8 班（無 F 級缺額時 R 級不應低於 8）`
+      );
+    }
+  }
+
+  // 職級單調性（假日）：低職級假日 ≥ 高職級，差距過大時警示（非硬性重排）。
+  const ranks = ['r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3'];
+  for (let i = 0; i < ranks.length - 1; i++) {
+    const lo = linko[ranks[i]];
+    const hi = linko[ranks[i + 1]];
+    if (lo.count === 0 || hi.count === 0) continue;
+    const loW = lo.weekend / lo.count;
+    const hiW = hi.weekend / hi.count;
+    if (hiW - loW > 1 + EPS) {
+      warnings.push(
+        `假日單調性：${ranks[i + 1].toUpperCase()} 每人 ${hiW.toFixed(1)} 假，高於低職級 ${ranks[i].toUpperCase()} ${loW.toFixed(1)} 假，請人工微調`
+      );
+    }
+  }
+}
+
+// ---------- Task 5: calculateSchedule ----------
+function calculateSchedule(raw) {
+  const n = normalizeInput(raw);
+  const demands = buildDemands(n);
+  const L = n.linko;
+  const T = n.taipei;
+
+  const get = (k) => L[k] || { count: 0 };
+  const linko = createPersonPool({
+    y2: get('y2'),
+    r1: get('r1'),
+    r2: get('r2'),
+    r3: get('r3'),
+    r4: get('r4'),
+    f1: get('f1'),
+    f2: get('f2'),
+    f3: get('f3'),
+  });
+  const taipei = createPersonPool({
+    tr1to3: { count: T.r1to3 },
+    tr4: { count: T.r4 },
+    tf1: { count: T.f1 },
+  });
+
+  const warnings = [];
+  const leftover = (label, r) => {
+    if (r.weekday > 0 || r.weekend > 0) {
+      warnings.push(`${label} 缺人：尚有 ${r.weekday}平${r.weekend}假 無法分配`);
+    }
+  };
+
+  // 1 病房班：Y2(可值最後一天) → R1 → R2 → R3
+  leftover('病房班', fillShift(linko, ['y2', 'r1', 'r2', 'r3'], 'ward', demands.ward));
+  // 2 L5：Y2、R1 → R2 → R3 → R4 → F1
+  leftover('L5', fillShift(linko, ['y2', 'r1', 'r2', 'r3', 'r4', 'f1'], 'L5', demands.L5));
+  // 3 L1：R2 → R3
+  leftover('L1', fillShift(linko, ['r2', 'r3'], 'L1', demands.L1));
+  // 4 L（總值班）：R3（受班數上限）→ R4 → F1 → F2
+  {
+    let rem = fillShift(linko, ['r3'], 'L', demands.L, { shiftCap: get('r3').lCapShifts || 0 });
+    rem = fillShift(linko, ['r4', 'f1', 'f2'], 'L', rem);
+    leftover('L', rem);
+  }
+  // 5 T1：台北R1-3 → 台北R4 → 林R1 → R2 → R3 → R4 → 台北F1（林口基隆籍跳過）
+  {
+    let rem = fillShift(taipei, ['tr1to3', 'tr4'], 'T1', demands.T1);
+    rem = fillShift(linko, ['r1', 'r2', 'r3', 'r4'], 'T1', rem, { excludeKeelung: true });
+    rem = fillShift(taipei, ['tf1'], 'T1', rem);
+    leftover('T1', rem);
+  }
+  // 6 T2：台北F1 → 林R4 → 林F1 → 林F2 → 林F3（林口基隆籍跳過）
+  {
+    let rem = fillShift(taipei, ['tf1'], 'T2', demands.T2);
+    rem = fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'T2', rem, { excludeKeelung: true });
+    leftover('T2', rem);
+  }
+  // 7 LR：林R4 → 林F1 → 林F2 → 林F3
+  leftover('LR', fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'LR', demands.LR));
+
+  validateLimits(linko, warnings);
+  return formatResult(linko, taipei, warnings);
+}
+
+// ===== ui.js =====
+// UI 層：讀表單 → 呼叫 calculateSchedule → 渲染結果與警示。
+
+const $ = (id) => document.getElementById(id);
+
+// 班別代碼 → 中文標籤（依 spec §5）。
+const SHIFT_LABEL = {
+  ward: '病房班',
+  L5: 'L5',
+  L1: 'L1',
+  L: 'L',
+  T1: 'T1',
+  T2: 'T2',
+  LR: 'LR',
+};
+// byShift 顯示順序（與 spec §5 一致）。
+const SHIFT_ORDER = ['ward', 'L', 'L1', 'T1', 'L5', 'T2', 'LR'];
+const LINKO_ORDER = ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3'];
+
+// {weekday,weekend} → "X平Y假"
+function pf(p) {
+  const wk = p && p.weekday ? p.weekday : 0;
+  const wend = p && p.weekend ? p.weekend : 0;
+  return `${wk}平${wend}假`;
+}
+
+// 選月份 → 自動帶入天數（可手動覆寫）。
+function onMonthChange() {
+  const m = Number($('month').value);
+  const r = getMonthDays(2026, m);
+  $('weekday').value = r.weekday;
+  $('weekend').value = r.weekend;
+  $('lastDayIsWeekend').checked = r.lastDayIsWeekend;
+}
+
+// 讀取所有欄位為 calculateSchedule 期望的 INPUT 形狀。
+function readInput() {
+  const num = (id) => {
+    const el = $(id);
+    return el ? Number(el.value || 0) : 0;
+  };
+  // 基本職級（人數 + 大/小特休 + 可選基隆籍）。
+  const lv = (p, withKeelung) => {
+    const o = { count: num(p + '_count'), bigLeave: num(p + '_big'), smallLeave: num(p + '_small') };
+    if (withKeelung) o.keelung = num(p + '_keelung');
+    return o;
+  };
+  return {
+    month: {
+      weekday: num('weekday'),
+      weekend: num('weekend'),
+      lastDayIsWeekend: $('lastDayIsWeekend') ? $('lastDayIsWeekend').checked : false,
+    },
+    taipei: { r1to3: num('t_r1to3'), r4: num('t_r4'), f1: num('t_f1') },
+    linko: {
+      y2: { count: num('y2_count'), canLastDay: num('y2_last') },
+      r1: lv('r1', false),
+      r2: lv('r2', true),
+      r3: { ...lv('r3', true), lCapablePeople: num('r3_lppl'), lCapShifts: num('r3_lcap') },
+      r4: lv('r4', true),
+      f1: lv('f1', false),
+      f2: lv('f2', false),
+      f3: lv('f3', false),
+    },
+    remaining: {
+      ward: { weekday: num('ward_wk'), weekend: num('ward_wend') },
+      l5: { weekday: num('l5_wk'), weekend: num('l5_wend') },
+    },
+  };
+}
+
+// 建一個 class + text 的元素。
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function renderTaipei(tp) {
+  const wrap = el('div', 'result-group');
+  wrap.appendChild(el('h3', null, '台北輪訓'));
+  // R1-3：只 T1；R4 / F1：T1 + T2。
+  const rows = [
+    ['R1-3', tp.r1to3, false],
+    ['R4', tp.r4, true],
+    ['F1', tp.f1, true],
+  ];
+  for (const [name, g, withT2] of rows) {
+    if (!g) continue;
+    const line = el('div', 'rline');
+    line.appendChild(el('span', null, `${name} `));
+    line.appendChild(el('span', 'cnt', `${g.count} 人`));
+    let txt = `：總共應值 T1 ${pf(g.T1)}`;
+    if (withT2) txt += `、T2 ${pf(g.T2)}`;
+    line.appendChild(el('span', null, txt));
+    wrap.appendChild(line);
+  }
+  return wrap;
+}
+
+function renderLinkoGroup(name, g) {
+  const wrap = el('div', 'result-group');
+  const h = el('h3', null, name.toUpperCase() + ' ');
+  h.appendChild(el('span', 'cnt', `${g.count} 人`));
+  wrap.appendChild(h);
+
+  // 各班別總數（依固定順序，只顯示有值的班別）。
+  const parts = [];
+  const bs = g.byShift || {};
+  for (const k of SHIFT_ORDER) {
+    if (bs[k]) parts.push(`${SHIFT_LABEL[k] || k} ${pf(bs[k])}`);
+  }
+  // 防漏：若有未在順序表內的班別也補上。
+  for (const k of Object.keys(bs)) {
+    if (!SHIFT_ORDER.includes(k)) parts.push(`${SHIFT_LABEL[k] || k} ${pf(bs[k])}`);
+  }
+  const shiftLine = el('div', 'rline');
+  shiftLine.appendChild(el('span', 'lbl', '各班別：'));
+  shiftLine.appendChild(el('span', null, parts.length ? parts.join('、') : '（無）'));
+  wrap.appendChild(shiftLine);
+
+  // 每人。
+  const pp = el('div', 'rline perperson', `因此每人 ${pf(g.perPerson)}`);
+  wrap.appendChild(pp);
+
+  // 大/小特休（只在 result 物件含有時顯示）。
+  if (g.bigLeavePerPerson) {
+    wrap.appendChild(el('div', 'rline leave', `大特休：${pf(g.bigLeavePerPerson)}`));
+  }
+  if (g.smallLeavePerPerson) {
+    wrap.appendChild(el('div', 'rline leave', `小特休：${pf(g.smallLeavePerPerson)}`));
+  }
+  return wrap;
+}
+
+function renderWarnings(warnings) {
+  const box = $('warnings');
+  box.textContent = '';
+  if (!warnings || warnings.length === 0) {
+    box.appendChild(el('div', 'ok-box', '\u2713 無警示'));
+    return;
+  }
+  const wb = el('div', 'warn-box');
+  wb.appendChild(el('div', null, `\u26A0 警示（${warnings.length}）：請人工調整`));
+  const ul = el('ul');
+  for (const w of warnings) ul.appendChild(el('li', null, w));
+  wb.appendChild(ul);
+  box.appendChild(wb);
+}
+
+function render(result) {
+  renderWarnings(result.warnings);
+
+  const out = $('result');
+  out.textContent = '';
+
+  out.appendChild(el('div', 'section-title', '台北輪訓'));
+  out.appendChild(renderTaipei(result.taipei));
+
+  out.appendChild(el('div', 'section-title', '林口各職級'));
+  for (const k of LINKO_ORDER) {
+    const g = result.linko[k];
+    if (g) out.appendChild(renderLinkoGroup(k, g));
+  }
+}
+
+function init() {
+  const monthSel = $('month');
+  if (monthSel) monthSel.addEventListener('change', onMonthChange);
+  const calcBtn = $('calc');
+  if (calcBtn) {
+    calcBtn.addEventListener('click', () => {
+      try {
+        render(calculateSchedule(readInput()));
+      } catch (err) {
+        const box = $('warnings');
+        if (box) {
+          box.textContent = '';
+          box.appendChild(el('div', 'warn-box', '計算發生錯誤：' + (err && err.message ? err.message : String(err))));
+        }
+      }
+    });
+  }
+  onMonthChange();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
+</script>
+</body>
+</html>
