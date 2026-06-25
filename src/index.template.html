@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>林口長庚婦產科住院醫師排班計算器</title>
+  <style>
+    :root {
+      --bg: #f4f6f8;
+      --card: #ffffff;
+      --border: #d4dae0;
+      --accent: #1f6feb;
+      --text: #1a1f25;
+      --muted: #6b7682;
+      --warn-bg: #fdecea;
+      --warn-border: #f5a3a3;
+      --warn-text: #b32020;
+      --ok: #1a7f37;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      font-size: 16px;
+    }
+    .wrap { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 0.85rem; margin: 0 0 16px; }
+    fieldset {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 0 0 14px;
+      padding: 12px 14px 14px;
+    }
+    legend {
+      font-weight: 600;
+      padding: 0 6px;
+      font-size: 1rem;
+    }
+    .note {
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin: 4px 0 10px;
+    }
+    label { display: block; }
+    .field {
+      display: inline-flex;
+      flex-direction: column;
+      margin: 0 10px 8px 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .field span { margin-bottom: 3px; }
+    input[type="number"], select {
+      font-size: 1rem;
+      padding: 7px 8px;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--text);
+      width: 90px;
+    }
+    select { width: 110px; }
+    input[type="number"] { width: 74px; }
+    .rank-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      padding: 8px 0;
+      border-bottom: 1px dashed var(--border);
+    }
+    .rank-row:last-child { border-bottom: none; }
+    .rank-name {
+      font-weight: 700;
+      width: 42px;
+      flex: 0 0 42px;
+      color: var(--accent);
+      align-self: center;
+    }
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: var(--text);
+      margin: 6px 0 4px;
+    }
+    .check input { width: auto; }
+    #calc {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      margin: 4px 0 18px;
+    }
+    #calc:active { opacity: 0.85; }
+    #warnings {
+      margin: 0 0 14px;
+    }
+    .warn-box {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+      border-radius: 10px;
+      padding: 12px 14px;
+      font-weight: 600;
+    }
+    .warn-box ul { margin: 6px 0 0; padding-left: 20px; }
+    .warn-box li { margin: 3px 0; font-weight: 500; }
+    .ok-box { color: var(--ok); font-size: 0.9rem; padding: 4px 2px; }
+    .result-group {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin: 0 0 10px;
+    }
+    .result-group h3 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+    }
+    .result-group h3 .cnt { color: var(--muted); font-weight: 500; font-size: 0.85rem; }
+    .rline { margin: 3px 0; font-size: 0.95rem; }
+    .rline .lbl { color: var(--muted); }
+    .perperson { font-weight: 700; color: var(--accent); }
+    .leave { color: #8a5a00; }
+    .section-title { font-weight: 700; margin: 14px 0 8px; font-size: 1.05rem; }
+    @media (max-width: 480px) {
+      input[type="number"] { width: 64px; }
+      .field { margin-right: 8px; }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>林口長庚婦產科住院醫師排班計算器</h1>
+  <p class="sub">每月計算各班別、各職級、每人應值幾平幾假（只算數量，不排逐日班表）。</p>
+
+  <fieldset>
+    <legend>月份 / 天數</legend>
+    <p class="note">選月份自動帶入 2026 台灣官方假日，可手動修改。</p>
+    <label class="field" style="display:inline-flex">
+      <span>月份</span>
+      <select id="month">
+        <option value="1">1 月</option>
+        <option value="2">2 月</option>
+        <option value="3">3 月</option>
+        <option value="4">4 月</option>
+        <option value="5">5 月</option>
+        <option value="6">6 月</option>
+        <option value="7">7 月</option>
+        <option value="8">8 月</option>
+        <option value="9">9 月</option>
+        <option value="10">10 月</option>
+        <option value="11">11 月</option>
+        <option value="12">12 月</option>
+      </select>
+    </label>
+    <label class="field"><span>平日班天數</span><input type="number" id="weekday" min="0"></label>
+    <label class="field"><span>假日班天數</span><input type="number" id="weekend" min="0"></label>
+    <label class="check"><input type="checkbox" id="lastDayIsWeekend"> 月底最後一天是假日</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>台北輪訓人數</legend>
+    <p class="note">台北人員比照林口配額；照順位填，填不滿才往下給林口。</p>
+    <label class="field"><span>R1-R3（值 T1）</span><input type="number" id="t_r1to3" min="0" value="0"></label>
+    <label class="field"><span>R4（值 T1/T2）</span><input type="number" id="t_r4" min="0" value="0"></label>
+    <label class="field"><span>F1（值 T1/T2）</span><input type="number" id="t_f1" min="0" value="0"></label>
+  </fieldset>
+
+  <fieldset>
+    <legend>林口各職級（扣除產房班後）</legend>
+
+    <div class="rank-row">
+      <div class="rank-name">Y2</div>
+      <label class="field"><span>人數</span><input type="number" id="y2_count" min="0" value="0"></label>
+      <label class="field"><span>可月底最後一天值班人數</span><input type="number" id="y2_last" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R1</div>
+      <label class="field"><span>人數</span><input type="number" id="r1_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r1_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r1_small" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R2</div>
+      <label class="field"><span>人數</span><input type="number" id="r2_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r2_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r2_small" min="0" value="0"></label>
+      <label class="field"><span>基隆籍</span><input type="number" id="r2_keelung" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R3</div>
+      <label class="field"><span>人數</span><input type="number" id="r3_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r3_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r3_small" min="0" value="0"></label>
+      <label class="field"><span>基隆籍</span><input type="number" id="r3_keelung" min="0" value="0"></label>
+      <label class="field"><span>可值總值班人數</span><input type="number" id="r3_lppl" min="0" value="0"></label>
+      <label class="field"><span>共可值總值班班數</span><input type="number" id="r3_lcap" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">R4</div>
+      <label class="field"><span>人數</span><input type="number" id="r4_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="r4_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="r4_small" min="0" value="0"></label>
+      <label class="field"><span>基隆籍</span><input type="number" id="r4_keelung" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">F1</div>
+      <label class="field"><span>人數</span><input type="number" id="f1_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="f1_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="f1_small" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">F2</div>
+      <label class="field"><span>人數</span><input type="number" id="f2_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="f2_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="f2_small" min="0" value="0"></label>
+    </div>
+
+    <div class="rank-row">
+      <div class="rank-name">F3</div>
+      <label class="field"><span>人數</span><input type="number" id="f3_count" min="0" value="0"></label>
+      <label class="field"><span>大特休</span><input type="number" id="f3_big" min="0" value="0"></label>
+      <label class="field"><span>小特休</span><input type="number" id="f3_small" min="0" value="0"></label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>外訓扣除後剩餘需求</legend>
+    <p class="note">排班者自行先扣外訓。PGY1 月底最後一天不能值的病房班洞、與扣除童綜合外訓後的 L5，請填這裡。</p>
+    <label class="field"><span>病房班 平日</span><input type="number" id="ward_wk" min="0" value="0"></label>
+    <label class="field"><span>病房班 假日</span><input type="number" id="ward_wend" min="0" value="0"></label>
+    <label class="field"><span>L5 平日</span><input type="number" id="l5_wk" min="0" value="0"></label>
+    <label class="field"><span>L5 假日</span><input type="number" id="l5_wend" min="0" value="0"></label>
+  </fieldset>
+
+  <button id="calc">計算</button>
+
+  <div id="warnings"></div>
+  <div id="result"></div>
+</div>
+
+<script type="module" src="holidays2026.js"></script>
+<script type="module" src="scheduler.js"></script>
+<script type="module" src="ui.js"></script>
+</body>
+</html>
