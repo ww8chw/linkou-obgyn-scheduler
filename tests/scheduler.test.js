@@ -7,7 +7,20 @@ import {
   fillShift,
   calculateSchedule,
   applyLeaveAdjustment,
+  distributePerson,
 } from '../src/scheduler.js';
+
+// 每人分佈加總不變量。
+function bucketSum(buckets) {
+  return buckets.reduce(
+    (a, b) => ({
+      people: a.people + b.people,
+      weekday: a.weekday + b.weekday * b.people,
+      weekend: a.weekend + b.weekend * b.people,
+    }),
+    { people: 0, weekday: 0, weekend: 0 }
+  );
+}
 
 // ---------- Task 2: normalizeInput ----------
 test('normalizeInput 填入預設並保留結構', () => {
@@ -281,6 +294,76 @@ test('formatResult：輸出含台北/林口每人與特休平假', () => {
   assert.equal(result.linko.r2.smallLeavePerPerson, undefined); // r2 無小特休
   assert.ok(result.taipei.r4.T2);
   assert.ok(result.taipei.r4.T1);
+});
+
+// ---------- item ①: distributePerson 不整除分佈 ----------
+test('distributePerson：不整除時平日少的人補假日，總數一致 (17平7假/3人)', () => {
+  const b = distributePerson(3, 17, 7, 0, 0);
+  // 期望 1 人 5平3假 + 2 人 6平2假，每人皆 8 班
+  assert.deepEqual(b, [
+    { people: 1, weekday: 5, weekend: 3 },
+    { people: 2, weekday: 6, weekend: 2 },
+  ]);
+  const s = bucketSum(b);
+  assert.equal(s.people, 3);
+  assert.equal(s.weekday, 17);
+  assert.equal(s.weekend, 7);
+});
+
+test('distributePerson：整除時只有單一桶', () => {
+  assert.deepEqual(distributePerson(3, 18, 6, 0, 0), [{ people: 3, weekday: 6, weekend: 2 }]);
+});
+
+test('distributePerson：特休者平日較少，加總仍守恆', () => {
+  const b = distributePerson(3, 15, 6, 1, 0); // 1 大特休
+  const s = bucketSum(b);
+  assert.equal(s.weekday, 15);
+  assert.equal(s.weekend, 6);
+  // 大特休者平日最少（吸收後一般人 6 平、大特休 6-2=4? 否：base=floor(17/3)=5,大特休=3）
+  const wks = b.flatMap((x) => Array(x.people).fill(x.weekday)).sort((a, c) => a - c);
+  assert.equal(wks[0], 3); // 大特休者
+  assert.equal(wks[wks.length - 1], 6); // 一般人吸收後
+});
+
+// ---------- item ④⑤: 職級單調性主動調整 ----------
+test('單調性：資深(R3)假日不會高於資淺(Y2/R1) 的基礎假日', () => {
+  const result = calculateSchedule({
+    month: { weekday: 20, weekend: 10, lastDayIsWeekend: false },
+    taipei: { r1to3: 0, r4: 0, f1: 0 },
+    linko: {
+      y2: { count: 3, canLastDay: 3 }, r1: { count: 3 }, r2: { count: 3 },
+      r3: { count: 3, lCapablePeople: 3, lCapShifts: 60 }, r4: { count: 3 },
+      f1: { count: 3 }, f2: { count: 3 }, f3: { count: 3 },
+    },
+    remaining: { ward: { weekday: 0, weekend: 0 }, l5: { weekday: 20, weekend: 10 } },
+  });
+  const baseWend = (g) => {
+    const f = Math.floor(g.total.weekend / g.count);
+    const rem = g.total.weekend - f * g.count;
+    return rem * 2 > g.count ? f + 1 : f;
+  };
+  const jr = result.linko.y2; // Y2/R1 同單位，取 Y2 代表
+  for (const k of ['r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
+    const g = result.linko[k];
+    if (g.count === 0) continue;
+    assert.ok(baseWend(g) <= baseWend(jr) || result.warnings.some((w) => /單調性/.test(w)),
+      `${k} 基礎假日 ${baseWend(g)} 不應高於 Y2 ${baseWend(jr)}`);
+  }
+});
+
+// ---------- item ②③: 台北 F1 特休與每人 ----------
+test('台北 F1：含特休欄位且輸出每人分佈', () => {
+  const result = calculateSchedule({
+    month: { weekday: 20, weekend: 8, lastDayIsWeekend: false },
+    taipei: { r1to3: 2, r4: 1, f1: 2, f1Big: 1, f1Small: 0 },
+    linko: {
+      y2: { count: 2, canLastDay: 2 }, r1: { count: 2 }, r2: { count: 2 },
+      r3: { count: 2, lCapablePeople: 2, lCapShifts: 30 }, r4: { count: 2 },
+      f1: { count: 2 }, f2: { count: 2 }, f3: { count: 2 },
+    },
+    remaining: { ward: { weekday: 0, weekend: 0 }, l5: { weekday: 20, weekend: 8 } },
+  });
+  assert.ok(Array.isArray(result.taipei.f1.perPersonBuckets));
 });
 
 // ---------- Task 9: validateLimits warnings ----------

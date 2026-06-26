@@ -25,6 +25,12 @@ function pf(p) {
   return `${wk}平${wend}假`;
 }
 
+// 每人分佈 [{people,weekday,weekend}] → "1 人 5平3假、2 人 6平2假"（不整除時呈現多種）。
+function pb(buckets) {
+  if (!buckets || buckets.length === 0) return '（無）';
+  return buckets.map((b) => `${b.people} 人 ${pf(b)}`).join('、');
+}
+
 // 選月份 → 自動帶入天數（可手動覆寫）。
 function onMonthChange() {
   const m = Number($('month').value);
@@ -52,7 +58,13 @@ function readInput() {
       weekend: num('weekend'),
       lastDayIsWeekend: $('lastDayIsWeekend') ? $('lastDayIsWeekend').checked : false,
     },
-    taipei: { r1to3: num('t_r1to3'), r4: num('t_r4'), f1: num('t_f1') },
+    taipei: {
+      r1to3: num('t_r1to3'),
+      r4: num('t_r4'),
+      f1: num('t_f1'),
+      f1Big: num('t_f1_big'),
+      f1Small: num('t_f1_small'),
+    },
     linko: {
       y2: { count: num('y2_count'), canLastDay: num('y2_last') },
       r1: lv('r1', false),
@@ -95,6 +107,9 @@ function renderTaipei(tp) {
     if (withT2) txt += `、T2 ${pf(g.T2)}`;
     line.appendChild(el('span', null, txt));
     wrap.appendChild(line);
+    if (g.count > 0) {
+      wrap.appendChild(el('div', 'rline perperson', `因此每人 ${pb(g.perPersonBuckets)}`));
+    }
   }
   return wrap;
 }
@@ -120,17 +135,8 @@ function renderLinkoGroup(name, g) {
   shiftLine.appendChild(el('span', null, parts.length ? parts.join('、') : '（無）'));
   wrap.appendChild(shiftLine);
 
-  // 每人。
-  const pp = el('div', 'rline perperson', `因此每人 ${pf(g.perPerson)}`);
-  wrap.appendChild(pp);
-
-  // 大/小特休（只在 result 物件含有時顯示）。
-  if (g.bigLeavePerPerson) {
-    wrap.appendChild(el('div', 'rline leave', `大特休：${pf(g.bigLeavePerPerson)}`));
-  }
-  if (g.smallLeavePerPerson) {
-    wrap.appendChild(el('div', 'rline leave', `小特休：${pf(g.smallLeavePerPerson)}`));
-  }
+  // 每人分佈（不整除或含特休時自動呈現多種，例：1 人 5平3假、2 人 6平2假）。
+  wrap.appendChild(el('div', 'rline perperson', `因此每人 ${pb(g.perPersonBuckets)}`));
   return wrap;
 }
 

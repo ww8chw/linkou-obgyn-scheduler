@@ -26,7 +26,13 @@ export function normalizeInput(raw) {
       weekend: D(m.weekend),
       lastDayIsWeekend: !!m.lastDayIsWeekend,
     },
-    taipei: { r1to3: D(t.r1to3), r4: D(t.r4), f1: D(t.f1) },
+    taipei: {
+      r1to3: D(t.r1to3),
+      r4: D(t.r4),
+      f1: D(t.f1),
+      f1Big: D(t.f1Big),
+      f1Small: D(t.f1Small),
+    },
     linko: Object.fromEntries(
       Object.entries(raw.linko || {}).map(([k, v]) => [k, lvl(v)])
     ),
@@ -163,6 +169,53 @@ export function applyLeaveAdjustment(g) {
   return { normal, normalAdjusted, big, small, pushedUp, normalCount, bigLeave, smallLeave };
 }
 
+// ---------- 每人分佈（處理不整除）----------
+// 把群組總平/假拆成「每人」分佈：平日不整除 → 餘數給部分人 +1；
+// 假日餘數給「平日較少」的人，使每個人的總班數盡量一致。
+// 特休：大特休少值 2 平、小特休少值 1 平（假日不減）。
+// 回傳 [{people, weekday, weekend}]，依平日遞增排序。
+export function distributePerson(count, weekday, weekend, bigLeave = 0, smallLeave = 0) {
+  if (count <= 0) return [];
+  // 每人平日扣減量：大特休 2、小特休 1、其餘 0。
+  const red = [];
+  for (let i = 0; i < bigLeave; i++) red.push(2);
+  for (let i = 0; i < smallLeave; i++) red.push(1);
+  for (let i = 0; i < count - bigLeave - smallLeave; i++) red.push(0);
+
+  const totalRed = red.reduce((a, b) => a + b, 0);
+  const base = Math.floor((weekday + totalRed) / count);
+  const remWk = weekday + totalRed - base * count; // 需 +1 平日的人數
+  const wk = red.map((r) => base - r);
+  // 平日餘數優先給無特休者（red 小者），維持特休者較少平日。
+  const byLeaveAsc = [...wk.keys()].sort((a, b) => red[a] - red[b] || a - b);
+  for (let k = 0; k < remWk; k++) wk[byLeaveAsc[k % count]] += 1;
+  for (let i = 0; i < count; i++) if (wk[i] < 0) wk[i] = 0;
+
+  // 假日均分；餘數給平日最少者，使總班數平衡。
+  const we = Math.floor(weekend / count);
+  const remWe = weekend - we * count;
+  const wend = new Array(count).fill(we);
+  const byWkAsc = [...wk.keys()].sort((a, b) => wk[a] - wk[b] || a - b);
+  for (let k = 0; k < remWe; k++) wend[byWkAsc[k]] += 1;
+
+  const map = new Map();
+  for (let i = 0; i < count; i++) {
+    const key = wk[i] + ',' + wend[i];
+    const cur = map.get(key) || { people: 0, weekday: wk[i], weekend: wend[i] };
+    cur.people += 1;
+    map.set(key, cur);
+  }
+  return [...map.values()].sort((a, b) => a.weekday - b.weekday || a.weekend - b.weekend);
+}
+
+// 群組「基礎假日數」= 每人分佈中人數最多的那個假日值（眾數），供職級單調性比較。
+function baseWeekend(count, weekend) {
+  if (count <= 0) return 0;
+  const f = Math.floor(weekend / count);
+  const rem = weekend - f * count;
+  return rem * 2 > count ? f + 1 : f; // 多數人落在 f+1 時取 f+1
+}
+
 // ---------- Task 8: formatResult ----------
 function fmtGroup(g) {
   const adj = applyLeaveAdjustment(g);
@@ -171,6 +224,7 @@ function fmtGroup(g) {
     total: { weekday: g.weekday, weekend: g.weekend },
     byShift: g.byShift,
     perPerson: adj.normalAdjusted,
+    perPersonBuckets: distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave),
   };
   if (g.bigLeave > 0) out.bigLeavePerPerson = adj.big;
   if (g.smallLeave > 0) out.smallLeavePerPerson = adj.small;
@@ -189,6 +243,7 @@ function formatResult(linko, taipei, warnings) {
       count: g.count,
       T1: g.byShift.T1 || { weekday: 0, weekend: 0 },
       T2: g.byShift.T2 || { weekday: 0, weekend: 0 },
+      perPersonBuckets: distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave),
     };
   }
   return { taipei: Tp, linko: L, warnings };
@@ -234,19 +289,75 @@ function validateLimits(linko, warnings) {
     }
   }
 
-  // 職級單調性（假日）：低職級假日 ≥ 高職級，差距過大時警示（非硬性重排）。
-  const ranks = ['r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3'];
-  for (let i = 0; i < ranks.length - 1; i++) {
-    const lo = linko[ranks[i]];
-    const hi = linko[ranks[i + 1]];
-    if (lo.count === 0 || hi.count === 0) continue;
-    const loW = lo.weekend / lo.count;
-    const hiW = hi.weekend / hi.count;
-    if (hiW - loW > 1 + EPS) {
+  // 職級單調性（假日）：主動調整後若資深仍高於資淺（受硬上限/可換班別限制無法搬平），才警示。
+  const unitName = (keys) => keys.map((k) => k.toUpperCase()).join('/');
+  for (let i = 1; i < RANK_UNITS.length; i++) {
+    const jr = unitAgg(linko, RANK_UNITS[i - 1]);
+    const sr = unitAgg(linko, RANK_UNITS[i]);
+    if (jr.count === 0 || sr.count === 0) continue;
+    if (baseWeekend(sr.count, sr.weekend) > baseWeekend(jr.count, jr.weekend)) {
       warnings.push(
-        `假日單調性：${ranks[i + 1].toUpperCase()} 每人 ${hiW.toFixed(1)} 假，高於低職級 ${ranks[i].toUpperCase()} ${loW.toFixed(1)} 假，請人工微調`
+        `假日單調性：${unitName(RANK_UNITS[i])} 每人假日仍高於資淺 ${unitName(RANK_UNITS[i - 1])}（受硬上限限制無法自動搬平），請人工微調`
       );
     }
+  }
+}
+
+// ---------- 職級單調性主動調整（item ④⑤）----------
+// 規則：資淺職級每人假日數 ≥ 資深職級（學長姐不該比學弟妹值更多假）。
+// Y2 與 R1 視為同一職級單位。資深若超過資淺，於「分配後」把多出的假日
+// 往資淺單位搬（資深 假→平、資淺 平→假，各自總班數不變、全院平假總數守恆），
+// 受每人 ≤3 假硬上限與資淺需有平日可換約束。byShift 明細維持原始分配。
+const RANK_UNITS = [['y2', 'r1'], ['r2'], ['r3'], ['r4'], ['f1'], ['f2'], ['f3']];
+
+function unitAgg(linko, keys) {
+  let count = 0, weekday = 0, weekend = 0;
+  for (const k of keys) {
+    const g = linko[k];
+    if (!g) continue;
+    count += g.count;
+    weekday += g.weekday;
+    weekend += g.weekend;
+  }
+  return { count, weekday, weekend };
+}
+
+// 在某單位內挑一個 group 調整總額：dir=+1 加假減平、-1 減假加平。
+function shiftWeekend(linko, keys, dir) {
+  // 加假(+1)：挑「平日最多」者（有平日可換）；減假(-1)：挑「假日最多」者。
+  let pick = null;
+  for (const k of keys) {
+    const g = linko[k];
+    if (!g || g.count === 0) continue;
+    if (dir > 0 && (g.weekday < 1 || g.weekend + 1 > g.count * MAX_WEEKEND)) continue;
+    if (dir < 0 && g.weekend < 1) continue;
+    if (!pick) { pick = g; continue; }
+    if (dir > 0 ? g.weekday > pick.weekday : g.weekend > pick.weekend) pick = g;
+  }
+  if (!pick) return false;
+  pick.weekend += dir;
+  pick.weekday -= dir;
+  return true;
+}
+
+function enforceMonotonicity(linko) {
+  for (let iter = 0; iter < 50; iter++) {
+    let changed = false;
+    for (let i = 1; i < RANK_UNITS.length; i++) {
+      const jr = unitAgg(linko, RANK_UNITS[i - 1]); // 資淺
+      const sr = unitAgg(linko, RANK_UNITS[i]); // 資深
+      if (jr.count === 0 || sr.count === 0) continue;
+      if (baseWeekend(sr.count, sr.weekend) <= baseWeekend(jr.count, jr.weekend)) continue;
+      // 資深假日偏多 → 移 1 假到資淺；需資淺加假後仍 ≤3/人、且雙方有可換班別。
+      if (jr.weekend + 1 > jr.count * MAX_WEEKEND) continue;
+      if (!shiftWeekend(linko, RANK_UNITS[i - 1], +1)) continue; // 資淺 平→假
+      if (!shiftWeekend(linko, RANK_UNITS[i], -1)) { // 資深 假→平；失敗則回退
+        shiftWeekend(linko, RANK_UNITS[i - 1], -1);
+        continue;
+      }
+      changed = true;
+    }
+    if (!changed) break;
   }
 }
 
@@ -271,7 +382,7 @@ export function calculateSchedule(raw) {
   const taipei = createPersonPool({
     tr1to3: { count: T.r1to3 },
     tr4: { count: T.r4 },
-    tf1: { count: T.f1 },
+    tf1: { count: T.f1, bigLeave: T.f1Big, smallLeave: T.f1Small },
   });
 
   const warnings = [];
@@ -308,6 +419,23 @@ export function calculateSchedule(raw) {
   }
   // 7 LR：林R4 → 林F1 → 林F2 → 林F3
   leftover('LR', fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'LR', demands.LR));
+
+  // 職級單調性主動調整（每天 T1/T2 已先確保有人，故此處不動 T1/T2 覆蓋）。
+  enforceMonotonicity(linko);
+
+  // item ③：台北 F1 每人總班數應與林口 F1 一致；但「每天 T1/T2 要有人」優先，
+  // 覆蓋需求已先滿足，若兩者每人總班數不同則僅警示、由人工微調，不犧牲覆蓋。
+  const tf1 = taipei.tf1;
+  const lf1 = linko.f1;
+  if (tf1.count > 0 && lf1.count > 0) {
+    const tEach = (tf1.weekday + tf1.weekend) / tf1.count;
+    const lEach = (lf1.weekday + lf1.weekend) / lf1.count;
+    if (Math.abs(tEach - lEach) > 1 + EPS) {
+      warnings.push(
+        `台北 F1 每人約 ${tEach.toFixed(1)} 班，與林口 F1 每人約 ${lEach.toFixed(1)} 班不一致（為確保每天 T1/T2 有人，請人工微調）`
+      );
+    }
+  }
 
   validateLimits(linko, warnings);
   return formatResult(linko, taipei, warnings);
