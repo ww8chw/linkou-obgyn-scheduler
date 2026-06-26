@@ -361,6 +361,32 @@ test('distributePerson 範例2：5人小+大特休 → 1人6平2假/2人5平3假
   assert.deepEqual(baseShift(b), { weekday: 6, weekend: 2 }); // 基礎 6平2假
 });
 
+// ---------- 不變量：每人分佈加總 = 各班別加總（藍色字=黑色字）----------
+test('每人分佈加總必須等於各班別加總（含特休與單調性調整後）', () => {
+  const result = calculateSchedule({
+    month: { weekday: 20, weekend: 9, lastDayIsWeekend: false },
+    taipei: { r1to3: 0, r4: 0, f1: 0 },
+    linko: {
+      y2: { count: 0, canLastDay: 0 }, r1: { count: 0 },
+      r2: { count: 4, bigLeave: 1, smallLeave: 1 },
+      r3: { count: 1, lCapablePeople: 1, lCapShifts: 5 },
+      r4: { count: 6, smallLeave: 2 }, f1: { count: 4, smallLeave: 1 },
+      f2: { count: 2 }, f3: { count: 2 },
+    },
+    remaining: { ward: { weekday: 0, weekend: 0 }, l5: { weekday: 0, weekend: 0 } },
+  });
+  for (const k of ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
+    const g = result.linko[k];
+    if (g.count === 0) continue;
+    const bs = Object.values(g.byShift).reduce(
+      (a, s) => ({ wk: a.wk + s.weekday, we: a.we + s.weekend }), { wk: 0, we: 0 }
+    );
+    const pp = bucketSum(g.perPersonBuckets);
+    assert.equal(pp.weekday, bs.wk, `${k} 每人平日加總應等於各班別平日`);
+    assert.equal(pp.weekend, bs.we, `${k} 每人假日加總應等於各班別假日`);
+  }
+});
+
 // ---------- item ④⑤: 職級單調性主動調整 ----------
 test('單調性：資深(R3)假日不會高於資淺(Y2/R1) 的基礎假日', () => {
   const result = calculateSchedule({

@@ -343,9 +343,11 @@ function validateLimits(linko, warnings) {
 
 // ---------- 職級單調性主動調整（item ④⑤）----------
 // 規則：資淺職級每人假日數 ≥ 資深職級（學長姐不該比學弟妹值更多假）。
-// Y2 與 R1 視為同一職級單位。資深若超過資淺，於「分配後」把多出的假日
-// 往資淺單位搬（資深 假→平、資淺 平→假，各自總班數不變、全院平假總數守恆），
-// 受每人 ≤3 假硬上限與資淺需有平日可換約束。byShift 明細維持原始分配。
+// Y2 與 R1 視為同一職級單位。資深若超過資淺，把 1 個假日「在同一個班別內」
+// 與資淺對調（資深該班別 假→平、資淺同班別 平→假）：
+//  - 該班別全院平/假總需求不變（資深 -1 假被資淺 +1 假抵銷）。
+//  - 群組 byShift 與群組總額同步更新，故「各班別」與「每人」永遠加總一致。
+// 受每人 ≤3 假硬上限約束；找不到可對調的同班別時則不動，改由警示提醒人工微調。
 const RANK_UNITS = [['y2', 'r1'], ['r2'], ['r3'], ['r4'], ['f1'], ['f2'], ['f3']];
 
 function unitAgg(linko, keys) {
@@ -360,22 +362,35 @@ function unitAgg(linko, keys) {
   return { count, weekday, weekend };
 }
 
-// 在某單位內挑一個 group 調整總額：dir=+1 加假減平、-1 減假加平。
-function shiftWeekend(linko, keys, dir) {
-  // 加假(+1)：挑「平日最多」者（有平日可換）；減假(-1)：挑「假日最多」者。
-  let pick = null;
-  for (const k of keys) {
-    const g = linko[k];
-    if (!g || g.count === 0) continue;
-    if (dir > 0 && (g.weekday < 1 || g.weekend + 1 > g.count * MAX_WEEKEND)) continue;
-    if (dir < 0 && g.weekend < 1) continue;
-    if (!pick) { pick = g; continue; }
-    if (dir > 0 ? g.weekday > pick.weekday : g.weekend > pick.weekend) pick = g;
+// 將 1 個假日從資深單位(srKeys)同班別對調到資淺單位(jrKeys)。
+// 需存在某班別 s：資深某群組該班別有假日(weekend≥1)、資淺某群組該班別有平日(weekday≥1)。
+// 同步更新雙方 byShift 與群組總額，保持加總一致與該班別全院需求守恆。
+function swapWeekendSameShift(linko, srKeys, jrKeys) {
+  for (const sk of srKeys) {
+    const sg = linko[sk];
+    if (!sg || sg.count === 0) continue;
+    for (const shift of Object.keys(sg.byShift)) {
+      if ((sg.byShift[shift].weekend || 0) < 1) continue;
+      for (const jk of jrKeys) {
+        const jg = linko[jk];
+        if (!jg || jg.count === 0) continue;
+        if ((jg.byShift[shift]?.weekday || 0) < 1) continue;
+        if (jg.weekend + 1 > jg.count * MAX_WEEKEND) continue; // 資淺加假後仍 ≤3/人
+        // 資深 該班別 假→平
+        sg.byShift[shift].weekend -= 1;
+        sg.byShift[shift].weekday += 1;
+        sg.weekend -= 1;
+        sg.weekday += 1;
+        // 資淺 同班別 平→假
+        jg.byShift[shift].weekday -= 1;
+        jg.byShift[shift].weekend += 1;
+        jg.weekday -= 1;
+        jg.weekend += 1;
+        return true;
+      }
+    }
   }
-  if (!pick) return false;
-  pick.weekend += dir;
-  pick.weekday -= dir;
-  return true;
+  return false;
 }
 
 function enforceMonotonicity(linko) {
@@ -386,14 +401,8 @@ function enforceMonotonicity(linko) {
       const sr = unitAgg(linko, RANK_UNITS[i]); // 資深
       if (jr.count === 0 || sr.count === 0) continue;
       if (baseWeekend(sr.count, sr.weekend) <= baseWeekend(jr.count, jr.weekend)) continue;
-      // 資深假日偏多 → 移 1 假到資淺；需資淺加假後仍 ≤3/人、且雙方有可換班別。
       if (jr.weekend + 1 > jr.count * MAX_WEEKEND) continue;
-      if (!shiftWeekend(linko, RANK_UNITS[i - 1], +1)) continue; // 資淺 平→假
-      if (!shiftWeekend(linko, RANK_UNITS[i], -1)) { // 資深 假→平；失敗則回退
-        shiftWeekend(linko, RANK_UNITS[i - 1], -1);
-        continue;
-      }
-      changed = true;
+      if (swapWeekendSameShift(linko, RANK_UNITS[i], RANK_UNITS[i - 1])) changed = true;
     }
     if (!changed) break;
   }
