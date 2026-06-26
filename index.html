@@ -555,39 +555,57 @@ function applyLeaveAdjustment(g) {
 
 // ---------- 每人分佈（處理不整除 + 特休）----------
 // 規則：
-//  - 大家以「總班數」為基準盡量平衡（差距 ≤ 1）；總班數 = (平+假+扣減)/人數。
-//  - 特休者「優先用假日班少的去減」：先把多出的假日(e+1)分給無特休者，
-//    特休者落在假日較少的組，再從平日扣（大特休 -2 平、小特休 -1 平）。
-//  - 特休者班數本就較少，不由他人吸收（群組總額在分配時已反映特休）。
+//  - 先分假日：一班一班發給目前假日最少者（不破 3 假上限），多出的假日優先給
+//    無特休者 → 特休者落在假日較少組。
+//  - 再分平日：水位填充「個人總班數(含已分配假日)+handicap」最低者；特休者帶
+//    handicap（大特休 +2、小特休 +1），因此總班數較少（平日永不為負）。
+//  - 全體加總恆等於群組配額（假日加總=E、平日加總=W，絕不靜默增減）。
+//  - 特休者班數本就較少，不由他人吸收。
 // 回傳 [{people, leave:null|'small'|'big', weekday, weekend}]。
 function distributePerson(count, weekday, weekend, bigLeave = 0, smallLeave = 0) {
   if (count <= 0) return [];
   const n = count;
-  // 每人特休別與平日扣減量。
+  // 每人特休別與 handicap（特休者總班數較少）。
   const leaveType = [];
   for (let i = 0; i < bigLeave; i++) leaveType.push('big');
   for (let i = 0; i < smallLeave; i++) leaveType.push('small');
   for (let i = 0; i < n - bigLeave - smallLeave; i++) leaveType.push(null);
   const red = leaveType.map((t) => (t === 'big' ? 2 : t === 'small' ? 1 : 0));
-  const totalRed = red.reduce((a, b) => a + b, 0);
 
-  // 無特休者優先（取得多出的假日與多出的總班數），特休者排後 → 落在假日少組。
-  const normalFirst = [...Array(n).keys()].sort((a, b) => red[a] - red[b] || a - b);
+  const W = Math.max(0, weekday);
+  const E = Math.max(0, weekend);
 
-  // 假日：remE 人多 1 假，優先給無特休者。
-  const e = Math.floor(weekend / n);
-  const remE = weekend - e * n;
-  const wend = new Array(n).fill(e);
-  for (let k = 0; k < remE; k++) wend[normalFirst[k]] += 1;
+  // 1) 假日：發給目前假日最少者（不破 3 假上限）；同分無特休者優先 → 特休落在假日少組。
+  const wend = new Array(n).fill(0);
+  for (let s = 0; s < E; s++) {
+    let best = -1;
+    for (let i = 0; i < n; i++) {
+      if (wend[i] >= MAX_WEEKEND) continue; // 不破 3 假上限
+      if (best < 0) { best = i; continue; }
+      if (
+        wend[i] < wend[best] ||
+        (wend[i] === wend[best] && (red[i] < red[best] || (red[i] === red[best] && i < best)))
+      ) {
+        best = i;
+      }
+    }
+    if (best < 0) break; // 理論上不會發生（E ≤ 3n）
+    wend[best] += 1;
+  }
 
-  // 總班數：baseTotal，remTotal 人多 1，優先給無特休者。
-  const baseTotal = Math.floor((weekday + weekend + totalRed) / n);
-  const remTotal = weekday + weekend + totalRed - baseTotal * n;
-  const tot = new Array(n).fill(baseTotal);
-  for (let k = 0; k < remTotal; k++) tot[normalFirst[k]] += 1;
-
-  // 平日 = 總 - 特休扣減 - 假日。
-  const wk = tot.map((t, i) => Math.max(0, t - red[i] - wend[i]));
+  // 2) 平日：水位填充「總班數(含假日)+handicap」最低者；特休者因 handicap 總班數較少。
+  const wk = new Array(n).fill(0);
+  for (let s = 0; s < W; s++) {
+    let best = 0;
+    for (let i = 1; i < n; i++) {
+      const ci = wend[i] + wk[i] + red[i];
+      const cb = wend[best] + wk[best] + red[best];
+      if (ci < cb || (ci === cb && (red[i] < red[best] || (red[i] === red[best] && i < best)))) {
+        best = i;
+      }
+    }
+    wk[best] += 1;
+  }
 
   // 分桶：依（特休別 + 平 + 假）；排序：無特休 → 小特休 → 大特休，同組平日多者在前。
   const order = { null: 0, small: 1, big: 2 };

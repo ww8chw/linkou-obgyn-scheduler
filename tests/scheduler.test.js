@@ -361,6 +361,26 @@ test('distributePerson 範例2：5人小+大特休 → 1人6平2假/2人5平3假
   assert.deepEqual(baseShift(b), { weekday: 6, weekend: 2 }); // 基礎 6平2假
 });
 
+// ---------- 邊界：特休扣減超過班數時不得產生幻影班數 ----------
+test('distributePerson：班數為 0 但有特休時，每人皆 0 且加總為 0', () => {
+  const b = distributePerson(4, 0, 0, 2, 0); // 4 人 2 大特休，無任何班
+  const s = bucketSum(b);
+  assert.equal(s.weekday, 0, '平日加總須為 0（不可有幻影班）');
+  assert.equal(s.weekend, 0);
+  assert.equal(s.people, 4);
+  for (const x of b) assert.ok(x.weekday >= 0 && x.weekend >= 0);
+});
+
+// ---------- 邊界：假日很多平日為 0 時不得超過 3 假上限、加總守恆 ----------
+test('distributePerson：純假日(0平11假/4人含特休)不破 3 假上限且加總守恆', () => {
+  const b = distributePerson(4, 0, 11, 1, 1);
+  const s = bucketSum(b);
+  assert.equal(s.weekday, 0);
+  assert.equal(s.weekend, 11, '假日加總須等於 11（不可遺失）');
+  assert.equal(s.people, 4);
+  for (const x of b) assert.ok(x.weekend <= 3, `每人假日 ${x.weekend} 不可超過 3`);
+});
+
 // ---------- 不變量：每人分佈加總 = 各班別加總（藍色字=黑色字）----------
 test('每人分佈加總必須等於各班別加總（含特休與單調性調整後）', () => {
   const result = calculateSchedule({
