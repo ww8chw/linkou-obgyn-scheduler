@@ -1,5 +1,5 @@
 // 端到端煙霧測試：以真實完整輸入跑 calculateSchedule，
-// 驗證輸出結構（taipei / linko 各職級 perPerson 數值、warnings 陣列）且不拋錯。
+// 驗證輸出結構（taipei / linko 各職級 perPersonBuckets/基礎班數、warnings 陣列）且不拋錯。
 import { test } from 'node:test';
 import assert from 'node:assert';
 import { calculateSchedule } from '../src/scheduler.js';
@@ -44,16 +44,17 @@ test('smoke：真實完整輸入跑得通且輸出結構正確', () => {
     assert.equal(typeof g.T2.weekday, 'number');
   }
 
-  // 林口每職級皆有 perPerson 且為數值。
+  // 林口每職級皆有每人分佈與基礎班數。
   for (const k of ['y2', 'r1', 'r2', 'r3', 'r4', 'f1', 'f2', 'f3']) {
     const g = result.linko[k];
     assert.ok(g, `linko.${k} 應存在`);
-    assert.ok(g.perPerson, `linko.${k}.perPerson 應存在`);
-    assert.equal(typeof g.perPerson.weekday, 'number', `linko.${k}.perPerson.weekday 應為數值`);
-    assert.equal(typeof g.perPerson.weekend, 'number', `linko.${k}.perPerson.weekend 應為數值`);
+    assert.ok(Array.isArray(g.perPersonBuckets), `linko.${k}.perPersonBuckets 應為陣列`);
+    assert.ok(g.baseShift, `linko.${k}.baseShift 應存在`);
+    assert.equal(typeof g.baseShift.weekday, 'number', `linko.${k}.baseShift.weekday 應為數值`);
+    assert.equal(typeof g.baseShift.weekend, 'number', `linko.${k}.baseShift.weekend 應為數值`);
   }
 
-  // 有特休的職級應附帶對應 perPerson 區塊。
-  assert.ok(result.linko.r1.bigLeavePerPerson, 'R1 有大特休應有 bigLeavePerPerson');
-  assert.ok(result.linko.r2.smallLeavePerPerson, 'R2 有小特休應有 smallLeavePerPerson');
+  // 有特休的職級每人分佈中應出現對應特休桶。
+  assert.ok(result.linko.r1.perPersonBuckets.some((b) => b.leave === 'big'), 'R1 有大特休桶');
+  assert.ok(result.linko.r2.perPersonBuckets.some((b) => b.leave === 'small'), 'R2 有小特休桶');
 });

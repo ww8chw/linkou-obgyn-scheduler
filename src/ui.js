@@ -25,10 +25,15 @@ function pf(p) {
   return `${wk}平${wend}假`;
 }
 
-// 每人分佈 [{people,weekday,weekend}] → "1 人 5平3假、2 人 6平2假"（不整除時呈現多種）。
+const LEAVE_LABEL = { small: '小特休', big: '大特休' };
+
+// 每人分佈 [{people,leave,weekday,weekend}] → "2 人 6平2假、1 人小特休 5平2假"。
+// 特休者標註特休別（依新規：特休者落在假日少組，平日再依特休扣減）。
 function pb(buckets) {
   if (!buckets || buckets.length === 0) return '（無）';
-  return buckets.map((b) => `${b.people} 人 ${pf(b)}`).join('、');
+  return buckets
+    .map((b) => `${b.people} 人${b.leave ? LEAVE_LABEL[b.leave] : ''} ${pf(b)}`)
+    .join('、');
 }
 
 // 選月份 → 自動帶入天數（可手動覆寫）。
@@ -109,6 +114,7 @@ function renderTaipei(tp) {
     wrap.appendChild(line);
     if (g.count > 0) {
       wrap.appendChild(el('div', 'rline perperson', `因此每人 ${pb(g.perPersonBuckets)}`));
+      if (g.baseShift) wrap.appendChild(el('div', 'rline', `基礎班數：${pf(g.baseShift)}`));
     }
   }
   return wrap;
@@ -135,8 +141,9 @@ function renderLinkoGroup(name, g) {
   shiftLine.appendChild(el('span', null, parts.length ? parts.join('、') : '（無）'));
   wrap.appendChild(shiftLine);
 
-  // 每人分佈（不整除或含特休時自動呈現多種，例：1 人 5平3假、2 人 6平2假）。
+  // 每人分佈（不整除或含特休時自動呈現多種，例：2 人 6平2假、1 人小特休 5平2假）。
   wrap.appendChild(el('div', 'rline perperson', `因此每人 ${pb(g.perPersonBuckets)}`));
+  if (g.baseShift) wrap.appendChild(el('div', 'rline', `基礎班數：${pf(g.baseShift)}`));
   return wrap;
 }
 

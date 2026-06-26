@@ -8,6 +8,7 @@ import {
   calculateSchedule,
   applyLeaveAdjustment,
   distributePerson,
+  baseShift,
   avgExclLeave,
 } from '../src/scheduler.js';
 
@@ -290,9 +291,12 @@ test('formatResult：輸出含台北/林口每人與特休平假', () => {
     },
     remaining: { ward: { weekday: 0, weekend: 2 }, l5: { weekday: 22, weekend: 8 } },
   });
-  assert.ok(result.linko.r1.perPerson);
-  assert.ok(result.linko.r1.bigLeavePerPerson); // r1 有大特休
-  assert.equal(result.linko.r2.smallLeavePerPerson, undefined); // r2 無小特休
+  assert.ok(Array.isArray(result.linko.r1.perPersonBuckets));
+  assert.ok(result.linko.r1.baseShift); // 含基礎班數
+  // r1 有大特休 → 每人分佈中應出現 big 桶
+  assert.ok(result.linko.r1.perPersonBuckets.some((b) => b.leave === 'big'));
+  // r2 無特休 → 不應有特休桶
+  assert.ok(result.linko.r2.perPersonBuckets.every((b) => b.leave == null));
   assert.ok(result.taipei.r4.T2);
   assert.ok(result.taipei.r4.T1);
 });
@@ -300,10 +304,10 @@ test('formatResult：輸出含台北/林口每人與特休平假', () => {
 // ---------- item ①: distributePerson 不整除分佈 ----------
 test('distributePerson：不整除時平日少的人補假日，總數一致 (17平7假/3人)', () => {
   const b = distributePerson(3, 17, 7, 0, 0);
-  // 期望 1 人 5平3假 + 2 人 6平2假，每人皆 8 班
+  // 期望 2 人 6平2假 + 1 人 5平3假（平日多者在前），每人皆 8 班
   assert.deepEqual(b, [
-    { people: 1, weekday: 5, weekend: 3 },
-    { people: 2, weekday: 6, weekend: 2 },
+    { people: 2, leave: null, weekday: 6, weekend: 2 },
+    { people: 1, leave: null, weekday: 5, weekend: 3 },
   ]);
   const s = bucketSum(b);
   assert.equal(s.people, 3);
@@ -312,7 +316,9 @@ test('distributePerson：不整除時平日少的人補假日，總數一致 (17
 });
 
 test('distributePerson：整除時只有單一桶', () => {
-  assert.deepEqual(distributePerson(3, 18, 6, 0, 0), [{ people: 3, weekday: 6, weekend: 2 }]);
+  assert.deepEqual(distributePerson(3, 18, 6, 0, 0), [
+    { people: 3, leave: null, weekday: 6, weekend: 2 },
+  ]);
 });
 
 test('distributePerson：特休者平日較少，加總仍守恆', () => {
@@ -320,10 +326,39 @@ test('distributePerson：特休者平日較少，加總仍守恆', () => {
   const s = bucketSum(b);
   assert.equal(s.weekday, 15);
   assert.equal(s.weekend, 6);
-  // 大特休者平日最少（吸收後一般人 6 平、大特休 6-2=4? 否：base=floor(17/3)=5,大特休=3）
+  // 大特休者標註 big 且落在桶尾、平日最少
+  const big = b.find((x) => x.leave === 'big');
+  assert.ok(big, '應有大特休桶');
   const wks = b.flatMap((x) => Array(x.people).fill(x.weekday)).sort((a, c) => a - c);
-  assert.equal(wks[0], 3); // 大特休者
-  assert.equal(wks[wks.length - 1], 6); // 一般人吸收後
+  assert.equal(wks[0], big.weekday); // 大特休者平日最少
+});
+
+// ---------- 新規：特休者優先用假日班少的去減（兩個官方範例）----------
+test('distributePerson 範例1：5人1小特休 → 2人6平2假/2人5平3假/1人小特休5平2假', () => {
+  const b = distributePerson(5, 27, 12, 0, 1);
+  assert.deepEqual(b, [
+    { people: 2, leave: null, weekday: 6, weekend: 2 },
+    { people: 2, leave: null, weekday: 5, weekend: 3 },
+    { people: 1, leave: 'small', weekday: 5, weekend: 2 },
+  ]);
+  const s = bucketSum(b);
+  assert.equal(s.weekday, 27);
+  assert.equal(s.weekend, 12);
+  assert.deepEqual(baseShift(b), { weekday: 6, weekend: 2 }); // 基礎 6平2假
+});
+
+test('distributePerson 範例2：5人小+大特休 → 1人6平2假/2人5平3假/1人小5平2假/1人大4平2假', () => {
+  const b = distributePerson(5, 25, 12, 1, 1);
+  assert.deepEqual(b, [
+    { people: 1, leave: null, weekday: 6, weekend: 2 },
+    { people: 2, leave: null, weekday: 5, weekend: 3 },
+    { people: 1, leave: 'small', weekday: 5, weekend: 2 },
+    { people: 1, leave: 'big', weekday: 4, weekend: 2 },
+  ]);
+  const s = bucketSum(b);
+  assert.equal(s.weekday, 25);
+  assert.equal(s.weekend, 12);
+  assert.deepEqual(baseShift(b), { weekday: 6, weekend: 2 }); // 基礎 6平2假
 });
 
 // ---------- item ④⑤: 職級單調性主動調整 ----------

@@ -493,43 +493,69 @@ function applyLeaveAdjustment(g) {
   return { normal, normalAdjusted, big, small, pushedUp, normalCount, bigLeave, smallLeave };
 }
 
-// ---------- 每人分佈（處理不整除）----------
-// 把群組總平/假拆成「每人」分佈：平日不整除 → 餘數給部分人 +1；
-// 假日餘數給「平日較少」的人，使每個人的總班數盡量一致。
-// 特休：大特休少值 2 平、小特休少值 1 平（假日不減）。
-// 回傳 [{people, weekday, weekend}]，依平日遞增排序。
+// ---------- 每人分佈（處理不整除 + 特休）----------
+// 規則：
+//  - 大家以「總班數」為基準盡量平衡（差距 ≤ 1）；總班數 = (平+假+扣減)/人數。
+//  - 特休者「優先用假日班少的去減」：先把多出的假日(e+1)分給無特休者，
+//    特休者落在假日較少的組，再從平日扣（大特休 -2 平、小特休 -1 平）。
+//  - 特休者班數本就較少，不由他人吸收（群組總額在分配時已反映特休）。
+// 回傳 [{people, leave:null|'small'|'big', weekday, weekend}]。
 function distributePerson(count, weekday, weekend, bigLeave = 0, smallLeave = 0) {
   if (count <= 0) return [];
-  // 每人平日扣減量：大特休 2、小特休 1、其餘 0。
-  const red = [];
-  for (let i = 0; i < bigLeave; i++) red.push(2);
-  for (let i = 0; i < smallLeave; i++) red.push(1);
-  for (let i = 0; i < count - bigLeave - smallLeave; i++) red.push(0);
-
+  const n = count;
+  // 每人特休別與平日扣減量。
+  const leaveType = [];
+  for (let i = 0; i < bigLeave; i++) leaveType.push('big');
+  for (let i = 0; i < smallLeave; i++) leaveType.push('small');
+  for (let i = 0; i < n - bigLeave - smallLeave; i++) leaveType.push(null);
+  const red = leaveType.map((t) => (t === 'big' ? 2 : t === 'small' ? 1 : 0));
   const totalRed = red.reduce((a, b) => a + b, 0);
-  const base = Math.floor((weekday + totalRed) / count);
-  const remWk = weekday + totalRed - base * count; // 需 +1 平日的人數
-  const wk = red.map((r) => base - r);
-  // 平日餘數優先給無特休者（red 小者），維持特休者較少平日。
-  const byLeaveAsc = [...wk.keys()].sort((a, b) => red[a] - red[b] || a - b);
-  for (let k = 0; k < remWk; k++) wk[byLeaveAsc[k % count]] += 1;
-  for (let i = 0; i < count; i++) if (wk[i] < 0) wk[i] = 0;
 
-  // 假日均分；餘數給平日最少者，使總班數平衡。
-  const we = Math.floor(weekend / count);
-  const remWe = weekend - we * count;
-  const wend = new Array(count).fill(we);
-  const byWkAsc = [...wk.keys()].sort((a, b) => wk[a] - wk[b] || a - b);
-  for (let k = 0; k < remWe; k++) wend[byWkAsc[k]] += 1;
+  // 無特休者優先（取得多出的假日與多出的總班數），特休者排後 → 落在假日少組。
+  const normalFirst = [...Array(n).keys()].sort((a, b) => red[a] - red[b] || a - b);
 
+  // 假日：remE 人多 1 假，優先給無特休者。
+  const e = Math.floor(weekend / n);
+  const remE = weekend - e * n;
+  const wend = new Array(n).fill(e);
+  for (let k = 0; k < remE; k++) wend[normalFirst[k]] += 1;
+
+  // 總班數：baseTotal，remTotal 人多 1，優先給無特休者。
+  const baseTotal = Math.floor((weekday + weekend + totalRed) / n);
+  const remTotal = weekday + weekend + totalRed - baseTotal * n;
+  const tot = new Array(n).fill(baseTotal);
+  for (let k = 0; k < remTotal; k++) tot[normalFirst[k]] += 1;
+
+  // 平日 = 總 - 特休扣減 - 假日。
+  const wk = tot.map((t, i) => Math.max(0, t - red[i] - wend[i]));
+
+  // 分桶：依（特休別 + 平 + 假）；排序：無特休 → 小特休 → 大特休，同組平日多者在前。
+  const order = { null: 0, small: 1, big: 2 };
   const map = new Map();
-  for (let i = 0; i < count; i++) {
-    const key = wk[i] + ',' + wend[i];
-    const cur = map.get(key) || { people: 0, weekday: wk[i], weekend: wend[i] };
+  for (let i = 0; i < n; i++) {
+    const key = leaveType[i] + '|' + wk[i] + '|' + wend[i];
+    const cur = map.get(key) || { people: 0, leave: leaveType[i], weekday: wk[i], weekend: wend[i] };
     cur.people += 1;
     map.set(key, cur);
   }
-  return [...map.values()].sort((a, b) => a.weekday - b.weekday || a.weekend - b.weekend);
+  return [...map.values()].sort(
+    (a, b) => order[a.leave] - order[b.leave] || b.weekday - a.weekday || a.weekend - b.weekend
+  );
+}
+
+// 基礎班數 = 無特休者中「最滿載」的那一桶：取總班數最多者，同總數取平日多者
+//（即偏好 6平2假 而非 5平3假 的標準滿載型態）。無無特休者則取整體最滿載。
+function baseShift(buckets) {
+  if (!buckets || buckets.length === 0) return { weekday: 0, weekend: 0 };
+  const normal = buckets.filter((b) => b.leave == null);
+  const pool = normal.length ? normal : buckets;
+  const top = pool.reduce((a, b) => {
+    const ta = a.weekday + a.weekend;
+    const tb = b.weekday + b.weekend;
+    if (tb > ta || (tb === ta && b.weekday > a.weekday)) return b;
+    return a;
+  });
+  return { weekday: top.weekday, weekend: top.weekend };
 }
 
 // 群組「基礎假日數」= 每人分佈中人數最多的那個假日值（眾數），供職級單調性比較。
@@ -542,17 +568,14 @@ function baseWeekend(count, weekend) {
 
 // ---------- Task 8: formatResult ----------
 function fmtGroup(g) {
-  const adj = applyLeaveAdjustment(g);
-  const out = {
+  const buckets = distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave);
+  return {
     count: g.count,
     total: { weekday: g.weekday, weekend: g.weekend },
     byShift: g.byShift,
-    perPerson: adj.normalAdjusted,
-    perPersonBuckets: distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave),
+    perPersonBuckets: buckets,
+    baseShift: baseShift(buckets),
   };
-  if (g.bigLeave > 0) out.bigLeavePerPerson = adj.big;
-  if (g.smallLeave > 0) out.smallLeavePerPerson = adj.small;
-  return out;
 }
 
 function formatResult(linko, taipei, warnings) {
@@ -563,24 +586,25 @@ function formatResult(linko, taipei, warnings) {
   const Tp = {};
   for (const [k, src] of [['r1to3', 'tr1to3'], ['r4', 'tr4'], ['f1', 'tf1']]) {
     const g = taipei[src];
+    const buckets = distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave);
     Tp[k] = {
       count: g.count,
       T1: g.byShift.T1 || { weekday: 0, weekend: 0 },
       T2: g.byShift.T2 || { weekday: 0, weekend: 0 },
-      perPersonBuckets: distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave),
+      perPersonBuckets: buckets,
+      baseShift: baseShift(buckets),
     };
   }
   return { taipei: Tp, linko: L, warnings };
 }
 
-// 平均班數排除特休者：以「無特休者」每人班數為代表（特休者班數本就較少，不列入平均）。
+// 平均班數排除特休者：以「無特休者」每人班數（基礎班數）為代表（特休者班數本就較少，不列入平均）。
 // 全員特休時無代表者，退回以總額均分。
 function avgExclLeave(g) {
-  const adj = applyLeaveAdjustment(g);
-  if (adj.normalCount > 0) {
-    const weekday = adj.normalAdjusted.weekday;
-    const weekend = adj.normalAdjusted.weekend;
-    return { weekday, weekend, total: weekday + weekend };
+  const normalCount = g.count - (g.bigLeave || 0) - (g.smallLeave || 0);
+  if (g.count > 0 && normalCount > 0) {
+    const b = baseShift(distributePerson(g.count, g.weekday, g.weekend, g.bigLeave, g.smallLeave));
+    return { weekday: b.weekday, weekend: b.weekend, total: b.weekday + b.weekend };
   }
   const c = g.count || 1;
   return { weekday: g.weekday / c, weekend: g.weekend / c, total: (g.weekday + g.weekend) / c };
@@ -805,10 +829,15 @@ function pf(p) {
   return `${wk}平${wend}假`;
 }
 
-// 每人分佈 [{people,weekday,weekend}] → "1 人 5平3假、2 人 6平2假"（不整除時呈現多種）。
+const LEAVE_LABEL = { small: '小特休', big: '大特休' };
+
+// 每人分佈 [{people,leave,weekday,weekend}] → "2 人 6平2假、1 人小特休 5平2假"。
+// 特休者標註特休別（依新規：特休者落在假日少組，平日再依特休扣減）。
 function pb(buckets) {
   if (!buckets || buckets.length === 0) return '（無）';
-  return buckets.map((b) => `${b.people} 人 ${pf(b)}`).join('、');
+  return buckets
+    .map((b) => `${b.people} 人${b.leave ? LEAVE_LABEL[b.leave] : ''} ${pf(b)}`)
+    .join('、');
 }
 
 // 選月份 → 自動帶入天數（可手動覆寫）。
@@ -889,6 +918,7 @@ function renderTaipei(tp) {
     wrap.appendChild(line);
     if (g.count > 0) {
       wrap.appendChild(el('div', 'rline perperson', `因此每人 ${pb(g.perPersonBuckets)}`));
+      if (g.baseShift) wrap.appendChild(el('div', 'rline', `基礎班數：${pf(g.baseShift)}`));
     }
   }
   return wrap;
@@ -915,8 +945,9 @@ function renderLinkoGroup(name, g) {
   shiftLine.appendChild(el('span', null, parts.length ? parts.join('、') : '（無）'));
   wrap.appendChild(shiftLine);
 
-  // 每人分佈（不整除或含特休時自動呈現多種，例：1 人 5平3假、2 人 6平2假）。
+  // 每人分佈（不整除或含特休時自動呈現多種，例：2 人 6平2假、1 人小特休 5平2假）。
   wrap.appendChild(el('div', 'rline perperson', `因此每人 ${pb(g.perPersonBuckets)}`));
+  if (g.baseShift) wrap.appendChild(el('div', 'rline', `基礎班數：${pf(g.baseShift)}`));
   return wrap;
 }
 
