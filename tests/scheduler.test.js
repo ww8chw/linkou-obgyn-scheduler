@@ -8,6 +8,7 @@ import {
   calculateSchedule,
   applyLeaveAdjustment,
   distributePerson,
+  avgExclLeave,
 } from '../src/scheduler.js';
 
 // 每人分佈加總不變量。
@@ -349,6 +350,22 @@ test('單調性：資深(R3)假日不會高於資淺(Y2/R1) 的基礎假日', ()
     assert.ok(baseWend(g) <= baseWend(jr) || result.warnings.some((w) => /單調性/.test(w)),
       `${k} 基礎假日 ${baseWend(g)} 不應高於 Y2 ${baseWend(jr)}`);
   }
+});
+
+// ---------- 平均班數排除特休者 ----------
+test('avgExclLeave：特休者不列入平均，以無特休者為代表', () => {
+  // 2 人 1 大特休，共 14 平 0 假 → 無特休者 8 平、大特休 6 平
+  const g = { count: 2, weekday: 14, weekend: 0, bigLeave: 1, smallLeave: 0 };
+  const a = avgExclLeave(g);
+  assert.equal(a.total, 8); // 代表者（無特休）= 8，而非 (14)/2=7
+  // 對照：含特休的舊均分為 7
+  assert.equal((g.weekday + g.weekend) / g.count, 7);
+});
+
+test('avgExclLeave：全員特休時退回總額均分', () => {
+  const g = { count: 2, weekday: 8, weekend: 2, bigLeave: 1, smallLeave: 1 };
+  const a = avgExclLeave(g);
+  assert.equal(a.total, (8 + 2) / 2);
 });
 
 // ---------- item ②③: 台北 F1 特休與每人 ----------

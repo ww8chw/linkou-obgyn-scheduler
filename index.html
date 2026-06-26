@@ -573,6 +573,19 @@ function formatResult(linko, taipei, warnings) {
   return { taipei: Tp, linko: L, warnings };
 }
 
+// 平均班數排除特休者：以「無特休者」每人班數為代表（特休者班數本就較少，不列入平均）。
+// 全員特休時無代表者，退回以總額均分。
+function avgExclLeave(g) {
+  const adj = applyLeaveAdjustment(g);
+  if (adj.normalCount > 0) {
+    const weekday = adj.normalAdjusted.weekday;
+    const weekend = adj.normalAdjusted.weekend;
+    return { weekday, weekend, total: weekday + weekend };
+  }
+  const c = g.count || 1;
+  return { weekday: g.weekday / c, weekend: g.weekend / c, total: (g.weekday + g.weekend) / c };
+}
+
 // ---------- Task 9: validateLimits ----------
 function validateLimits(linko, warnings) {
   const minF = { f1: 3, f2: 2, f3: 1 };
@@ -580,7 +593,7 @@ function validateLimits(linko, warnings) {
   for (const [k, min] of Object.entries(minF)) {
     const g = linko[k];
     if (g.count > 0) {
-      const each = (g.weekday + g.weekend) / g.count;
+      const each = avgExclLeave(g).total;
       if (each < min - EPS) {
         anyFbelow = true;
         warnings.push(`${k.toUpperCase()} 每人約 ${each.toFixed(1)} 班，低於最低 ${min} 班`);
@@ -598,8 +611,9 @@ function validateLimits(linko, warnings) {
         `${k.toUpperCase()} 特休調整後仍有 ${adj.pushedUp.weekday} 個平日班超出 8 班上限，需人工往上一職級調整`
       );
     }
-    const totEach = (g.weekday + g.weekend) / g.count;
-    const wendEach = g.weekend / g.count;
+    const avg = avgExclLeave(g);
+    const totEach = avg.total;
+    const wendEach = avg.weekend;
     if (totEach > MAX_TOTAL + EPS) {
       warnings.push(`${k.toUpperCase()} 每人約 ${totEach.toFixed(1)} 班，超過 8 班上限`);
     }
