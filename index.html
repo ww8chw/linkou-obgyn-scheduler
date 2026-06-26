@@ -136,6 +136,26 @@
     .perperson { font-weight: 700; color: var(--accent); }
     .leave { color: #8a5a00; }
     .section-title { font-weight: 700; margin: 14px 0 8px; font-size: 1.05rem; }
+    .rules {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      margin: 0 0 14px;
+      padding: 10px 14px;
+    }
+    .rules > summary {
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--accent);
+      list-style: none;
+    }
+    .rules > summary::-webkit-details-marker { display: none; }
+    .rules > summary::before { content: "\25B6 "; font-size: 0.8em; }
+    .rules[open] > summary::before { content: "\25BC "; }
+    .rules-body { margin-top: 8px; font-size: 0.9rem; }
+    .rules-h { font-weight: 700; margin: 12px 0 4px; color: var(--text); }
+    .rules-body ul, .rules-body ol { margin: 4px 0 8px; padding-left: 20px; }
+    .rules-body li { margin: 3px 0; }
     @media (max-width: 480px) {
       input[type="number"] { width: 64px; }
       .field { margin-right: 8px; }
@@ -146,6 +166,46 @@
 <div class="wrap">
   <h1>林口長庚婦產科住院醫師排班計算器</h1>
   <p class="sub">每月計算各班別、各職級、每人應值幾平幾假（只算數量，不排逐日班表）。</p>
+
+  <details class="rules">
+    <summary>本計算器依循的排班規則（點此展開）</summary>
+    <div class="rules-body">
+      <p class="rules-h">班別填補順序（各依職級順位往下補）</p>
+      <ol>
+        <li>病房班 → L5 → L1 → L（總值班）→ T1 → T2 → LR。</li>
+        <li>每個班別缺額由順位較前的職級先吃，吃不下才往下一職級。</li>
+      </ol>
+
+      <p class="rules-h">每人班數上限</p>
+      <ul>
+        <li>硬性上限：每人 ≤ 8 班、≤ 3 假，絕不超過。</li>
+        <li>平日軟上限 6；一個滿載的人可為「6平2假」或「5平3假」，兩者皆可。</li>
+      </ul>
+
+      <p class="rules-h">特休</p>
+      <ul>
+        <li>大特休：少值 2 個平日；小特休：少值 1 個平日。假日永遠不因特休減少。</li>
+        <li><b>特休者優先用假日班少的去減</b>：先把多出的假日分給沒特休的人，特休者落在假日較少的組，再從平日扣特休。</li>
+        <li>特休者本來就值得比較少，缺的班不由其他人吸收。</li>
+        <li><b>基礎班數</b>：指沒有特休的人之中最滿載的型態（優先呈現 6平2假），方便對照特休者少值了多少。</li>
+      </ul>
+
+      <p class="rules-h">職級與身分限制</p>
+      <ul>
+        <li>基隆籍：不值 T1／T2。</li>
+        <li>台北輪訓人員：只值 T1／T2，且比照林口配額（照順位填，填不滿才往下給林口）。</li>
+        <li>R3 的 L（總值班）：受「可值總值班人數」與「共可值班數上限」限制。</li>
+        <li>職級單調性：學長姐每人假日數不應高於學弟妹；分配後若資深仍偏高會自動在資深↔資淺間調整（總班數與全院平假總額守恆），受硬上限限制無法搬平時改以警示提醒人工微調。</li>
+        <li>台北 F1 每人總班數應與林口 F1 一致；但「每天 T1／T2 都要有人」優先，若兩者不一致僅警示、不犧牲覆蓋。</li>
+      </ul>
+
+      <p class="rules-h">平均與警示</p>
+      <ul>
+        <li>計算各職級平均班數時，把有特休的人排除在外、不列入平均。</li>
+        <li>人力不足／超過上限／假日分配失衡時，於上方以紅色警示列出，需人工微調。</li>
+      </ul>
+    </div>
+  </details>
 
   <fieldset>
     <legend>月份 / 天數</legend>
