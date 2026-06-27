@@ -170,10 +170,18 @@
   <details class="rules">
     <summary>本計算器依循的排班規則（點此展開）</summary>
     <div class="rules-body">
-      <p class="rules-h">班別填補順序（各依職級順位往下補）</p>
+      <p class="rules-h">班別填補順序（依各職級內部順位）</p>
       <ol>
-        <li>病房班 → L5 → L1 → L（總值班）→ T1 → T2 → LR。</li>
-        <li>每個班別缺額由順位較前的職級先吃，吃不下才往下一職級。</li>
+        <li>每個職級先吃自己最優先的班別，吃飽再吃次順位；每個班別缺額由順位較前的職級先吃，吃不下才往下一職級。</li>
+        <li>各職級班別順位：
+          <ul>
+            <li>Y2／R1：病房班、L5（L5 主要來源）。</li>
+            <li>R2：L1 ＞ T1 ＞ L5（L5 最低，留到最後才補）。</li>
+            <li>R3：L1 ＞ L ＞ T1 ＞ L5。</li>
+            <li>R4：L ＞ T1 ＞ T2 ＞ LR ＞ L5。</li>
+            <li>台北 F1：T2 ＞ T1。</li>
+          </ul>
+        </li>
       </ol>
 
       <p class="rules-h">每人班數上限</p>

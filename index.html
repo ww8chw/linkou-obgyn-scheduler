@@ -170,10 +170,18 @@
   <details class="rules">
     <summary>本計算器依循的排班規則（點此展開）</summary>
     <div class="rules-body">
-      <p class="rules-h">班別填補順序（各依職級順位往下補）</p>
+      <p class="rules-h">班別填補順序（依各職級內部順位）</p>
       <ol>
-        <li>病房班 → L5 → L1 → L（總值班）→ T1 → T2 → LR。</li>
-        <li>每個班別缺額由順位較前的職級先吃，吃不下才往下一職級。</li>
+        <li>每個職級先吃自己最優先的班別，吃飽再吃次順位；每個班別缺額由順位較前的職級先吃，吃不下才往下一職級。</li>
+        <li>各職級班別順位：
+          <ul>
+            <li>Y2／R1：病房班、L5（L5 主要來源）。</li>
+            <li>R2：L1 ＞ T1 ＞ L5（L5 最低，留到最後才補）。</li>
+            <li>R3：L1 ＞ L ＞ T1 ＞ L5。</li>
+            <li>R4：L ＞ T1 ＞ T2 ＞ LR ＞ L5。</li>
+            <li>台北 F1：T2 ＞ T1。</li>
+          </ul>
+        </li>
       </ol>
 
       <p class="rules-h">每人班數上限</p>
@@ -841,33 +849,41 @@ function calculateSchedule(raw) {
     }
   };
 
+  // 班別順位採「各職級內部順位」：依各職級優先吃的班別先後填補。
+  //   R2：L1 > T1 > L5（L5 為最低，留到最後清尾）
+  //   R3：L1 > L > T1 > L5
+  //   R4：L > T1 > T2 > LR > L5
+  //   台北F1：T2 > T1
+  //   Y2/R1：病房班、L5（主要 L5 來源）
+  // 因 R4(T1>T2) 與 台北F1(T2>T1) 分屬林口/台北兩池、各自獨立填補，可同時成立。
+
   // 1 病房班：Y2(可值最後一天) → R1 → R2 → R3
   leftover('病房班', fillShift(linko, ['y2', 'r1', 'r2', 'r3'], 'ward', demands.ward));
-  // 2 L5：Y2、R1 → R2 → R3 → R4 → F1
-  leftover('L5', fillShift(linko, ['y2', 'r1', 'r2', 'r3', 'r4', 'f1'], 'L5', demands.L5));
-  // 3 L1：R2 → R3
+  // 2 L5（主要）：Y2、R1 先吃；R2/R3/R4/F1 的 L5 為最低順位，留到最後清尾。
+  let l5rem = fillShift(linko, ['y2', 'r1'], 'L5', demands.L5);
+  // 3 L1：R2 → R3（R2 最高順位為 L1）
   leftover('L1', fillShift(linko, ['r2', 'r3'], 'L1', demands.L1));
-  // 4 L（總值班）：R3（受班數上限）→ R4 → F1 → F2
+  // 4 L（總值班）：R3（受班數上限）→ R4 → F1 → F2（R4 最高順位為 L）
   {
     let rem = fillShift(linko, ['r3'], 'L', demands.L, { shiftCap: get('r3').lCapShifts || 0 });
     rem = fillShift(linko, ['r4', 'f1', 'f2'], 'L', rem);
     leftover('L', rem);
   }
-  // 5 T1：台北R1-3 → 台北R4 → 林R1 → R2 → R3 → R4 → 台北F1（林口基隆籍跳過）
+  // 5 T2（台北F1 優先）：台北F1 順位 T2 > T1，故先吃 T2，餘量留待步驟 7 由林口承接。
+  let t2rem = fillShift(taipei, ['tf1'], 'T2', demands.T2);
+  // 6 T1：台北R1-3 → 台北R4 → 林R1 → R2 → R3 → R4 → 台北F1（林口基隆籍跳過）
   {
     let rem = fillShift(taipei, ['tr1to3', 'tr4'], 'T1', demands.T1);
     rem = fillShift(linko, ['r1', 'r2', 'r3', 'r4'], 'T1', rem, { excludeKeelung: true });
     rem = fillShift(taipei, ['tf1'], 'T1', rem);
     leftover('T1', rem);
   }
-  // 6 T2：台北F1 → 林R4 → 林F1 → 林F2 → 林F3（林口基隆籍跳過）
-  {
-    let rem = fillShift(taipei, ['tf1'], 'T2', demands.T2);
-    rem = fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'T2', rem, { excludeKeelung: true });
-    leftover('T2', rem);
-  }
-  // 7 LR：林R4 → 林F1 → 林F2 → 林F3
+  // 7 T2（其餘）：林R4 → 林F1 → 林F2 → 林F3（林口基隆籍跳過）
+  leftover('T2', fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'T2', t2rem, { excludeKeelung: true }));
+  // 8 LR：林R4 → 林F1 → 林F2 → 林F3（R4 順位 LR 在 L5 之前）
   leftover('LR', fillShift(linko, ['r4', 'f1', 'f2', 'f3'], 'LR', demands.LR));
+  // 9 L5（清尾）：R2 → R3 → R4 → F1 的最低順位 L5。
+  leftover('L5', fillShift(linko, ['r2', 'r3', 'r4', 'f1'], 'L5', l5rem));
 
   // 職級單調性主動調整（每天 T1/T2 已先確保有人，故此處不動 T1/T2 覆蓋）。
   enforceMonotonicity(linko);
